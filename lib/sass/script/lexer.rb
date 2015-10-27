@@ -72,8 +72,7 @@ module Sass
 
       TOKEN_NAMES = Sass::Util.map_hash(OPERATORS_REVERSE) {|k, v| [k, v.inspect]}.merge(
           :const => "variable (e.g. $foo)",
-          :ident => "identifier (e.g. middle)",
-          :bool => "boolean (e.g. true, false)")
+          :ident => "identifier (e.g. middle)")
 
       # A list of operator strings ordered with longer names first
       # so that `>` and `<` don't clobber `>=` and `<=`.
@@ -83,6 +82,8 @@ module Sass
       # with identifier names.
       IDENT_OP_NAMES = OP_NAMES.select {|k, v| k =~ /^\w+/}
 
+      PARSEABLE_NUMBER = /(?:(\d*\.\d+)|(\d+))(?:[eE]([+-]?\d+))?(#{UNIT})?/
+
       # A hash of regular expressions that are used for tokenizing.
       REGULAR_EXPRESSIONS = {
         :whitespace => /\s+/,
@@ -90,10 +91,10 @@ module Sass
         :single_line_comment => SINGLE_LINE_COMMENT,
         :variable => /(\$)(#{IDENT})/,
         :ident => /(#{IDENT})(\()?/,
-        :number => /(-)?(?:(\d*\.\d+)|(\d+))([a-zA-Z%]+)?/,
+        :number => PARSEABLE_NUMBER,
+        :unary_minus_number => /-#{PARSEABLE_NUMBER}/,
         :color => HEXCOLOR,
-        :bool => /(true|false)\b/,
-        :null => /null\b/,
+        :id => /##{IDENT}/,
         :selector => /&/,
         :ident_op => /(#{Regexp.union(*IDENT_OP_NAMES.map do |s|
           Regexp.new(Regexp.escape(s) + "(?!#{NMCHAR}|\Z)")
@@ -102,11 +103,10 @@ module Sass
       }
 
       class << self
-
         private
 
         def string_re(open, close)
-          /#{open}((?:\\.|\#(?!\{)|[^#{close}\\#])*)(#{close}|#\{)/
+          /#{open}((?:\\.|\#(?!\{)|[^#{close}\\#])*)(#{close}|#\{)/m
         end
       end
 
@@ -198,7 +198,8 @@ module Sass
 
       # @return [Boolean] Whether or not there's more source text to lex.
       def done?
-        whitespace unless after_interpolation? && @interpolation_stack.last
+        return if @next_tok
+        whitespace unless after_interpolation? && !@interpolation_stack.empty?
         @scanner.eos? && @tok.nil?
       end
 
@@ -235,6 +236,11 @@ module Sass
       private
 
       def read_token
+        if (tok = @next_tok)
+          @next_tok = nil
+          return tok
+        end
+
         return if done?
         start_pos = source_position
         value = token
@@ -250,13 +256,19 @@ module Sass
       end
 
       def token
-        if after_interpolation? && (interp_type = @interpolation_stack.pop)
-          return string(interp_type, true)
+        if after_interpolation? && (interp = @interpolation_stack.pop)
+          interp_type, interp_value = interp
+          if interp_type == :special_fun
+            return special_fun_body(interp_value)
+          else
+            raise "[BUG]: Unknown interp_type #{interp_type}" unless interp_type == :string
+            return string(interp_value, true)
+          end
         end
 
-        variable || string(:double, false) || string(:single, false) || number ||
-          color || bool || null || selector || string(:uri, false) ||
-          raw(UNICODERANGE) || special_fun || special_val || ident_op || ident || op
+        variable || string(:double, false) || string(:single, false) || number || id || color ||
+          selector || string(:uri, false) || raw(UNICODERANGE) || special_fun || special_val ||
+          ident_op || ident || op
       end
 
       def variable
@@ -275,51 +287,88 @@ module Sass
       end
 
       def string(re, open)
+        line, offset = @line, @offset
         return unless scan(STRING_REGULAR_EXPRESSIONS[re][open])
+        if @scanner[0] =~ /([^\\]|^)\n/
+          filename = @options[:filename]
+          Sass::Util.sass_warn <<MESSAGE
+DEPRECATION WARNING on line #{line}, column #{offset}#{" of #{filename}" if filename}:
+Unescaped multiline strings are deprecated and will be removed in a future version of Sass.
+To include a newline in a string, use "\\a" or "\\a " as in CSS.
+MESSAGE
+        end
+
         if @scanner[2] == '#{' # '
-          @scanner.pos -= 2 # Don't actually consume the #{
-          @offset -= 2
-          @interpolation_stack << re
+          @interpolation_stack << [:string, re]
+          start_pos = Sass::Source::Position.new(@line, @offset - 2)
+          @next_tok = Token.new(:string_interpolation, range(start_pos), @scanner.pos - 2)
         end
         str =
           if re == :uri
             url = "#{'url(' unless open}#{@scanner[1]}#{')' unless @scanner[2] == '#{'}"
             Script::Value::String.new(url)
           else
-            Script::Value::String.new(@scanner[1].gsub(/\\(['"]|\#\{)/, '\1'), :string)
+            Script::Value::String.new(Sass::Script::Value::String.value(@scanner[1]), :string)
           end
         [:string, str]
       end
 
       def number
-        return unless scan(REGULAR_EXPRESSIONS[:number])
-        value = @scanner[2] ? @scanner[2].to_f : @scanner[3].to_i
-        value = -value if @scanner[1]
+        # Handling unary minus is complicated by the fact that whitespace is an
+        # operator in SassScript. We want "1-2" to be parsed as "1 - 2", but we
+        # want "1 -2" to be parsed as "1 (-2)". To accomplish this, we only
+        # parse a unary minus as part of a number literal if there's whitespace
+        # before and not after it. Cases like "(-2)" are handled by the unary
+        # minus logic in the parser instead.
+        if @scanner.peek(1) == '-'
+          return if @scanner.pos == 0
+          unary_minus_allowed =
+            case @scanner.string[@scanner.pos - 1, 1]
+            when /\s/; true
+            when '/'; @scanner.pos != 1 && @scanner.string[@scanner.pos - 2, 1] == '*'
+            else; false
+            end
+
+          return unless unary_minus_allowed
+          return unless scan(REGULAR_EXPRESSIONS[:unary_minus_number])
+          minus = true
+        else
+          return unless scan(REGULAR_EXPRESSIONS[:number])
+          minus = false
+        end
+
+        value = (@scanner[1] ? @scanner[1].to_f : @scanner[2].to_i) * (minus ? -1 : 1)
+        value *= 10**@scanner[3].to_i if @scanner[3]
         script_number = Script::Value::Number.new(value, Array(@scanner[4]))
         [:number, script_number]
       end
 
+      def id
+        # Colors and ids are tough to tell apart, because they overlap but
+        # neither is a superset of the other. "#xyz" is an id but not a color,
+        # "#000" is a color but not an id, "#abc" is both, and "#0" is neither.
+        # We need to handle all these cases correctly.
+        #
+        # To do so, we first try to parse something as an id. If this works and
+        # the id is also a valid color, we return the color. Otherwise, we
+        # return the id. If it didn't parse as an id, we then try to parse it as
+        # a color. If *this* works, we return the color, and if it doesn't we
+        # give up and throw an error.
+        #
+        # IDs in properties are used in the Basic User Interface Module
+        # (http://www.w3.org/TR/css3-ui/).
+        return unless scan(REGULAR_EXPRESSIONS[:id])
+        if @scanner[0] =~ /^\#[0-9a-fA-F]+$/ && (@scanner[0].length == 4 || @scanner[0].length == 7)
+          return [:color, Script::Value::Color.from_hex(@scanner[0])]
+        end
+        [:ident, @scanner[0]]
+      end
+
       def color
-        s = scan(REGULAR_EXPRESSIONS[:color])
-        return unless s
-        raise Sass::SyntaxError.new(<<MESSAGE.rstrip) unless s.size == 4 || s.size == 7
-Colors must have either three or six digits: '#{s}'
-MESSAGE
-        script_color = Script::Value::Color.from_hex(s)
+        return unless @scanner.match?(REGULAR_EXPRESSIONS[:color])
+        return unless @scanner[0].length == 4 || @scanner[0].length == 7
+        script_color = Script::Value::Color.from_hex(scan(REGULAR_EXPRESSIONS[:color]))
         [:color, script_color]
-      end
-
-      def bool
-        s = scan(REGULAR_EXPRESSIONS[:bool])
-        return unless s
-        script_bool = Script::Value::Bool.new(s == 'true')
-        [:bool, script_bool]
-      end
-
-      def null
-        return unless scan(REGULAR_EXPRESSIONS[:null])
-        script_null = Script::Value::Null.new
-        [:null, script_null]
       end
 
       def selector
@@ -331,18 +380,34 @@ MESSAGE
       end
 
       def special_fun
-        str1 = scan(/((-[\w-]+-)?(calc|element)|expression|progid:[a-z\.]*)\(/i)
-        return unless str1
-        str2, _ = Sass::Shared.balance(@scanner, ?(, ?), 1)
-        c = str2.count("\n")
-        old_line = @line
-        old_offset = @offset
-        @line += c
-        @offset = c == 0 ? @offset + str2.size : str2[/\n([^\n]*)/, 1].size + 1
-        [:special_fun,
-         Sass::Util.merge_adjacent_strings(
-            [str1] + Sass::Engine.parse_interp(str2, old_line, old_offset, @options)),
-         str1.size + str2.size]
+        prefix = scan(/((-[\w-]+-)?(calc|element)|expression|progid:[a-z\.]*)\(/i)
+        return unless prefix
+        special_fun_body(1, prefix)
+      end
+
+      def special_fun_body(parens, prefix = nil)
+        str = prefix || ''
+        while (scanned = scan(/.*?([()]|\#\{)/m))
+          str << scanned
+          if scanned[-1] == ?(
+            parens += 1
+            next
+          elsif scanned[-1] == ?)
+            parens -= 1
+            next unless parens == 0
+          else
+            raise "[BUG] Unreachable" unless @scanner[1] == '#{' # '
+            str.slice!(-2..-1)
+            @interpolation_stack << [:special_fun, parens]
+            start_pos = Sass::Source::Position.new(@line, @offset - 2)
+            @next_tok = Token.new(:string_interpolation, range(start_pos), @scanner.pos - 2)
+          end
+
+          return [:special_fun, Sass::Script::Value::String.new(str)]
+        end
+
+        scan(/.*/)
+        expected!('")"')
       end
 
       def special_val
@@ -359,8 +424,9 @@ MESSAGE
       def op
         op = scan(REGULAR_EXPRESSIONS[:op])
         return unless op
-        @interpolation_stack << nil if op == :begin_interpolation
-        [OPERATORS[op]]
+        name = OPERATORS[op]
+        @interpolation_stack << nil if name == :begin_interpolation
+        [name]
       end
 
       def raw(rx)
@@ -374,7 +440,7 @@ MESSAGE
         return unless str
         c = str.count("\n")
         @line += c
-        @offset = (c == 0 ? @offset + str.size : str.size - str.rindex("\n") + 1)
+        @offset = (c == 0 ? @offset + str.size : str.size - str.rindex("\n"))
         str
       end
 

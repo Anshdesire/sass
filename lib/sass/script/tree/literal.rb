@@ -35,12 +35,14 @@ module Sass::Script::Tree
       value.inspect
     end
 
+    def force_division!
+      value.original = nil if value.is_a?(Sass::Script::Value::Number)
+    end
+
     protected
 
     def _perform(environment)
-      value.line = line
       value.source_range = source_range
-      value.filename = filename
       value
     end
   end

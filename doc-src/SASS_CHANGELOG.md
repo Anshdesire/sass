@@ -3,7 +3,294 @@
 * Table of contents
 {:toc}
 
-## 3.3.0 (Unreleased)
+## 4.0.0 (Unreleased)
+
+* Combine ids and `:root` when unifying selectors with `@extend` and selector
+  functions.
+
+* Add a `$weight` parameter to `invert()`.
+
+## 3.4.19 (UNRELEASED)
+
+* Sass numeric equality now better handles float-point errors. Any
+  numbers that are within `1 / (10 ^ (precision + 1))` of each other are
+  now considered equal.
+
+* Allow importing relative paths on standard input even when `--stdin` isn't
+  explicitly passed.
+
+* Since we require ruby 1.8.7 or greater, support for ruby 1.8.6 was
+  removed from the code.
+
+* Small performance enhancements.
+
+## 3.4.18 (25 August 2015)
+
+* A fix in 3.4.17 to address unecessary semi-colons in compressed mode
+  was too aggressive and removed some that *were* necessary. This is now
+  fixed.
+
+## 3.4.17 (21 August 2015)
+
+* Allow passing calc values to rgb/hsl color constructors.
+
+* The source map end character for lists now correctly uses the end of
+  the list instead of the end of the first element in the list.
+
+* Fix up some edge cases where extra semicolons could be added to unknown
+  directives in compressed mode.
+
+* If you try to do a stupid color operation with a stupid value, the
+  error message will now be less stupid than it was.
+
+* Make `is-superselector("a > c d", "a > b c d")` return `false`. This also
+  fixes some related `@extend` behavior.
+
+* A `/` in a parenthesized list is consistently treated as a plain `/` unless it
+  meets the criteria for being treated as division.
+
+* In `sass-convert`, ensure that literal `/`es are preserved.
+
+## 3.4.16 (10 July 2015)
+
+* When converting from Sass to SCSS or vice versa, double-space around nested
+  rules the same as around top-level rules.
+
+* Compatibility with listen 3.
+
+* Parse a minus operator with no surrounding whitespace (e.g. 20px-10px) the
+  same regardless of whether it's being used in a static property.
+
+## 3.4.15 (22 June 2015)
+
+* Further improve rounding for various numeric operations.
+
+* Be more explicit in the function documentation about functions being
+  immutable.
+
+* Improve rounding in operator-based color operations.
+
+### Deprecations -- Must Read!
+
+* When using `--stdin` with the `sass` or `scss` executables, importing relative
+  to the working directory is deprecated. Having the working directory on the
+  load path was deprecated in 3.3 and removed in 3.4, but due to an oversight
+  the deprecation process never happened for files read over standard input in
+  particular. This is the first step of that process.
+
+## 3.4.14 (22 May 2015)
+
+* Further avoid race conditions when caching.
+
+* Only emit one warning for each line that uses the deprecated form of
+  `unquote()`.
+
+* Stop parsing and emitting invalid `@supports` directives.
+
+* Add a deprecation warning for using `!=` to compare a number with units to a
+  number without. Such a warning already existed for `==`.
+
+* Improve rounding of the results of color operations.
+
+## 3.4.13 (26 February 2015)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.13).
+
+* Be clearer in the reference about hyphen/underscore equivalence.
+
+* `@keyframes` rules are now converted from CSS properly.
+
+* Extending a selector that contains a non-final pseudo-class no longer crashes.
+
+* When `@extending`, only a single `:root` element will be retained.
+
+## 3.4.12 (13 February 2015)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.12).
+
+* Non-string interpolation within string interpolation is now parsed correctly.
+
+* `random()` now returns the correct result if it has an integer value
+  but a float representation.
+
+## 3.4.11 (30 January 2015)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.11).
+
+* Parent selectors used both outside and inside a pseudo selector
+  (e.g. `&:not(&--foo)`) now compile correctly.
+
+* Interpolation in a multiline indented-syntax selector is no longer
+  omitted.
+
+* Add a stack trace to the `unquote()` deprecation warning.
+
+* When converting a space-separated list with `sass-convert`, add
+  parentheses when they make it easier to read even if they aren't
+  strictly required.
+  
+### Deprecations -- Must Read!
+
+* Compiling directories on the command line without using either
+  `--watch` or `--update` is deprecated. This only worked
+  inconsistently before.
+
+## 3.4.10 (16 January 2015)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.10).
+
+* `inspect()` no longer adds extra parentheses to nested maps.
+
+* Update the documentation of the `random()` function to accurate reflect its
+  behavior.
+
+### Deprecations -- Must Read!
+
+* Passing a non-string value to the `unquote()` function didn't do
+  anything useful and is now deprecated. In future, this function will
+  follow its documentation and emit an error if a non-string value is
+  passed.
+
+* Defining a function named `calc`, `element`, `expression`, or `url`
+  (or the former two with a vendor-style prefix) is now deprecated.
+  These functions were already shadowed by CSS functions with special
+  parsing rules, and so were impossible to use anyway. In the future,
+  attempting to define these functions will throw an error.
+
+## 3.4.9 (24 November 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.9).
+
+* Fix an incompatibility with listen 2.7.12 and later.
+
+* Properly handle interpolation within `calc()` and similar functions
+  with `sass-convert`.
+
+* Properly handle conversion of `@extend` with `!optional` to SCSS.
+
+* Properly handle conversion of `@at-root` with a selector to SCSS.
+
+* Don't crash on selectors containing escape codes.
+
+## 3.4.8 (14 November 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.8).
+
+* When `@extending` selectors inside `:not()`, don't add a complex
+  selector where none existed before to avoid breaking selectors on
+  browsers that don't support that.
+
+* Add a deprecation warning for passing numbers with units to the alpha
+  arguments to `rgba()` and `hsla()`. In a future release, a percentage will be
+  interpreted according to [the spec][alpha value] and other units will produce
+  errors.
+
+[alpha value]: http://dev.w3.org/csswg/css-color/#typedef-alpha-value
+
+## 3.4.7 (31 October 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.7).
+
+* Stop crashing when extending selector pseudoclasses such as `:not()`.
+
+* `@extend` resolution and `is-superselector()` no longer consider `.foo > .baz`
+  to be a superselector of `.foo > .bar > .baz`.
+
+* Update documentation for `set-nth`
+
+### Deprecations -- Must Read!
+
+* Sass will now print a warning when `==` is used for numbers when one
+  number doesn't have units, the other does, and their numeric values
+  are equal. In the future, unitless numbers will never be equal to
+  numbers with units.
+
+## 3.4.6 (16 October 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.6).
+
+* Parent selectors now work in selector pseudoclasses (for example, `:not(&)`).
+
+* `@for` loops no longer crash when one bound is an integer-like float.
+
+* Fix exception on `Sass::Importers::Filesystem#eql?`.
+
+## 3.4.5 (19 September 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.5).
+
+* Fix `sass-convert --recursive`.
+
+* When using `sass --watch`, imported stylesheets within the working directory
+  will be watched for changes. This matches the behavior of Sass 3.3.
+
+* Set exit code 65, indicating a [data error][], when the compiler fails due to
+  a Sass error.
+
+[data error]: http://www.freebsd.org/cgi/man.cgi?query=sysexits
+
+## 3.4.4 (12 September 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.4).
+
+* Produce more useful error messages when paths have incompatible encodings on
+  Windows.
+
+* Allow `@keyframes` selectors to use arbitrary identifiers to support libraries
+  like Skrollr.
+
+* `sass-convert` now preserves double-star mutliline comments (e.g.
+  `/** foo */`).
+
+## 3.4.3 (4 September 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.3).
+
+* Don't crash when a non-existent directory is on the load path.
+
+* Fix `--watch` on Windows.
+
+* Passing too many arguments to a function via `...` is now a warning rather
+  than silently discarding additional arguments. In future versions of Sass,
+  this will become an error.
+
+## 3.4.2 (28 August 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.2).
+
+* Properly detect the output format from the output filename for `sass-convert`.
+
+* Properly parse interpolation immediately following a string.
+
+* Fix `--watch` for symlinked files and directories.
+
+## 3.4.1 (22 August 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.1).
+
+* Fix `--watch`.
+
+* Don't generate `:not()` selectors that contain more than one complex selector.
+
+* Fix a parsing bug with attribute selectors containing single quotes.
+
+* Don't put rulesets inside `@keyframes` directives when bubbling them up to the
+  top level.
+
+* Properly handle `@keyframes` rules that contain no properties.
+
+* Properly handle `--sourcemap=none` with `--update`.
+
+* Silence "template deleted" notifications for templates that weren't being
+  watched.
+
+* Top-level control structures can assign to global variables without needing
+  `!global`. Variables first defined in these structures will still be local
+  without `!global`.
+
+## 3.4.0 (18 August 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.4.0).
 
 ### Using `&` in SassScript
 
@@ -24,111 +311,377 @@ The value of `$selector` is now `((".foo.bar" ".baz.bang"), ".bip.qux")`. The
 compound selectors are quoted here to indicate that they're strings, but in
 reality they would be unquoted.
 
-The SassScript `&` may be used in selectors using `#{}` interpolation. By
-treating it as a SassScript value, you can do different things with it than you
-can when treating it as a selector. When `&` is used as a selector, it can only
-appear at the beginning of a compound selector, similarly to a type selector
-like `a` or `h1`. When used with `#{}`, it can go anywhere. For example:
+If there is no parent selector, the value of `&` will be null. This means you
+can use it in a mixin to detect whether a parent selector exists:
 
-    .badge {
-      @at-root #{&}-info { ... }
-      @at-root #{&}-header { ... }
-    }
-
-Produces:
-
-    .badge-info { ... }
-    .badge-header { ... }
-
-#### `@at-root`
-
-What's that `@at-root` thing in the previous example? It's a way to tell Sass
-that you don't want that selector to be nested. When you use `&` as a selector,
-Sass can tell automatically that you don't want nesting, but when you use it
-with `#{}` you have to be explicit. After all, you might have put it in a
-variable, returned it from a function, or turned it into a string and reversed
-the characters.
-
-In addition to using `@at-root` on a single selector, you can also use it on a
-whole block of them. For example:
-
-    .badge {
-      @at-root {
-        #{&}-info { ... }
-        #{&}-header { ... }
-      }
-    }
-
-Also produces:
-
-    .badge-info { ... }
-    .badge-header { ... }
-
-#### `@at-root (without: ...)` and `@at-root (with: ...)`
-
-By default, `@at-root` just excludes selectors to allow `#{&}` to work
-similarly to just including `&` in a selector. However, it's also
-possible to use `@at-root` to move outside of nested directives such
-as `@media` as well. For example:
-
-    @media print {
-      .page {
-        width: 8in;
-        @at-root (without: media) {
+    @mixin does-parent-exist {
+      @if & {
+        &:hover {
+          color: red;
+        }
+      } @else {
+        a {
           color: red;
         }
       }
     }
 
-produces:
+### Selector Functions
 
-    @media print {
-      .page {
-        width: 8in;
+Complementing the ability to use `&` in SassScript, there's a new suite of
+functions that use Sass's powerful `@extend` infrastructure to allow users to
+manipulate selectors. These functions take selectors in the fully-parsed format
+returned by `&`, plain strings, or anything in between. Those that return
+selectors return them in the same format as `&`.
+
+* The {Sass::Script::Functions#selector_nest `selector-nest($selectors...)`
+  function} nests each selector within one another just like they would be
+  nested in the stylesheet if you wrote them separated by spaces. For example,
+  `selector-nest(".foo, .bar", ".baz")` returns `.foo .baz, .bar .baz` (well,
+  technically `(("foo" ".baz") (".bar" ".baz"))`).
+
+* The {Sass::Script::Functions#selector_append `selector-append($selectors...)`
+  function} concatenates each selector without a space. It handles selectors
+  with commas gracefully, so it's safer than just concatenating the selectors
+  using `#{}`. For example, `selector-append(".foo, .bar", "-suffix")` returns
+  `.foo-suffix, .bar-suffix`.
+
+* The {Sass::Script::Functions#selector_extend `selector-extend($selector,
+  $extendee, $extender)` function} works just like `@extend`. It adds new
+  selectors to `$selector` as though you'd written `$extender { @extend
+  $extendee; }`.
+
+* The {Sass::Script::Functions#selector_replace `selector-replace($selector,
+  $original, $replacement)` function} replaces all instances of `$original` in
+  `$selector` with `$replacement`. It uses the same logic as `@extend`, so you
+  can replace complex selectors with confidence.
+
+* The {Sass::Script::Functions#selector_unify `selector-unify($selector1,
+  $selector2)` function} returns a selector that matches only elements matched
+  by both `$selector1` and `$selector2`.
+
+* The {Sass::Script::Functions#is_superselector `is-superselector($super, $sub)`
+  function} returns whether or not `$super` matches a superset of the elements
+  `$sub` matches.
+
+* The {Sass::Script::Functions#simple_selectors `simple-selectors($selector)`
+  function} takes only a selector with no commas or spaces (that is, a [compound
+  selector](http://dev.w3.org/csswg/selectors4/#structure)). It returns the list
+  of simple selectors that make up that compound selector.
+
+* The {Sass::Script::Functions#selector_parse `selector-parse($selector)`
+  function} takes a selector in any format accepted by selector functions and
+  returns it in the same format returned by `&`. It's useful for getting a
+  selector into a consistent format before manually manipulating its contents.
+
+One of the most straightforward applications of selector functions and `&` is
+adding multiple suffixes to the same parent selector. For example:
+
+    .list {
+      @at-root #{selector-append(&, "--big", &, "--active")} {
+        color: red;
       }
     }
-    .page {
-      color: red;
-    }
 
-You can use `@at-root (without: ...)` to move outside of any
-directive. You can also do it with multiple directives separated by a
-space: `@at-root (without: media supports)` moves outside of both
-`@media` and `@supports` queries.
+### Smaller Improvements
 
-There are two special values you can pass to `@at-root`. "rule" refers
-to normal CSS rules; `@at-root (without: rule)` is the same as
-`@at-root` with no query. `@at-root (without: all)` means that the
-styles should be moved outside of *all* directives and CSS rules.
+* Sourcemaps are now generated by default when using the `sass` or `scss`
+  executables and when using Sass as a plugin. This can be disabled by passing
+  `--sourcemap=none` on the command line or setting the `:sourcemap` option to
+  `:none` in Ruby.
 
-If you want to specify which directives or rules to include, rather
-than listing which ones should be excluded, you can use `with` instead
-of `without`. For example, `@at-root (with: rule)` will move outside
-of all directives, but will preserve any CSS rules.
+* If a relative URI from a sourcemap to a Sass file can't be generated, it will
+  now fall back to using an absolute "file:" URI. In addition,
+  `--sourcemap=file` can be passed on the command line to force all URIs to Sass
+  files to be absolute.
 
-### Source Maps
+* To guarantee that a sourcemap will be portable, `--sourcemap=inline` can be
+  passed to include the full source text in the sourcemap. Note that this can
+  cause very large sourcemaps to be generated for large projects.
 
-Sass now has the ability to generate standard JSON [source maps][] of a format
-that will soon be supported in most major browsers. These source maps tell the
-browser how to find the Sass styles that caused each CSS style to be generated.
-They're much more fine-grained than the old Sass-specific debug info that was
-generated; rather than providing the source location of entire CSS rules at a
-time, source maps provide the source location of each individual selector and
-property.
+* `@extend` can now extend selectors within selector pseudoclasses such as
+  `:not` and `:matches`. This also means that placeholder selectors can be used
+  within selector pseudoclasses. This behavior can be detected using
+  `feature-exists(extend-selector-pseudoclass)`.
 
-Source maps can be generated by passing the `--sourcemap` flag to the `sass`
-executable, by passing the {file:SASS_REFERENCE.md#sourcemap-option `:sourcemap`
-option} to \{Sass::Plugin}, or by using the
-\{Sass::Engine#render\_with\_sourcemap} method. By default, Sass assumes that
-the source stylesheets will be made available on whatever server you're using,
-and that their relative location will be the same as it is on the local
-filesystem. If this isn't the case, you'll need to make a custom class that
-extends \{Sass::Importers::Base} or \{Sass::Importers::Filesystem} and overrides
-\{Sass::Importers::Base#public\_url `#public_url`}.
+* Sass now supports an `@error` directive that prints a message as a fatal
+  error. This is useful for user-defined mixins and functions that want to
+  validate arguments and throw useful errors for unexpected conditions. Support
+  for this directive can be detected using `feature-exists(at-error)`.
 
-Thanks to Alexander Pavlov for implementing this.
+* When using colors in SassScript, the original representation of the color will
+  be preserved wherever possible. If you write `#f00`, it will be rendered as
+  `#f00`, not as `red` or `#ff0000`. In compressed mode, Sass will continue to
+  choose the most compact possible representation for colors.
 
-[source maps]: https://docs.google.com/document/d/1U1RGAehQwRypUTovF1KRlpiOFze0b-_2gc6fAH0KY0k/edit?hl=en_US&pli=1&pli=1
+* Add support for unit arithmetic with many more units, including angles, times,
+  frequencies, and resolutions. This behavior can be detected using
+  `feature-exists(units-level-3)`.
+
+* Sass now follows the [CSS Syntax Level 3][encodings level 3]
+  specification for determining a stylesheet's encoding. In addition,
+  it now only emits UTF-8 CSS rather than trying to match the source
+  encoding.
+
+[encodings level 3]: http://www.w3.org/TR/2013/WD-css-syntax-3-20130919/#determine-the-fallback-encoding
+
+* Sass now allows numbers to be written using scientific notation. It will not
+  emit numbers in scientific notation until it's more widely supported in
+  browsers.
+
+* Sass now allows almost any identifier to be used as a custom numeric unit.
+  Identifiers that are ambiguous with subtraction, such as `px-1px`, are
+  disallowed.
+
+* Sass now supports using ids as values in SassScript as defined in the CSS
+  Basic User Interface Module. They're treated as unquoted strings.
+
+* SassScript strings and `@import` directives now support the full CSS string
+  grammar. This includes handling escape codes and ignoring backslashes followed
+  by newlines.
+
+* When the `sass` and `scss` executables encounter an error, they will now
+  produce a CSS file describing that error. Previously this was enabled only for
+  `--watch` and `--update` mode; now it's enabled whenever a CSS file is being
+  written to disk.
+
+* The command-line `--help` documentation for the `sass`, `scss`, and
+  `sass-convert` executables is revised and re-organized.
+
+* The `map-remove` function now allows multiple map keys to be removed at once.
+
+* The new `rebeccapurple` color is now supported.
+
+* The `rgb()`, `rgba()`, `hsl()`, and `hsla()` functions now follow the CSS spec
+  by clamping their arguments to the valid ranges rather than emitting an error.
+  Sass-specific color functions still throw errors for out-of-range values.
+
+* Sass will now emit a warning when a named color is used directly in
+  interpolation (`#{}`) in a context where the hex representation would likely
+  be invalid. This should help users avoid having their stylesheets break in
+  compressed output mode.
+
+* Fix a bug where some `@media` queries would be followed by newlines in
+  compressed mode.
+
+### Backwards Incompatibilities -- Must Read!
+
+* The current working directory will no longer be placed onto the Sass load path
+  by default. If you need the current working directory to be available,
+  set `SASS_PATH=.` in your shell's environment.
+
+* Sass will now throw an error when a list of pairs is passed to a map function.
+
+* `mix()`'s deprecated argument names, `$color-1` and `$color-2`, will now throw
+   errors. Use `$color1` and `$color2` instead.
+
+* `comparable()`'s deprecated argument names, `$number-1` and `$number-2`, will
+  now throw errors. Use `$number1` and `$number2` instead.
+
+* `percentage()`'s, `round()`'s, `ceil()`'s, `floor()`'s, and `abs()`'s
+  deprecated argument name, `$value`, will now throw an error. Use `$number`
+  instead.
+
+* `index()` now returns `null` rather than `false` if the value isn't found in
+  the list.
+
+* All variable assignments not at the top level of the document are now local by
+  default. If there's a global variable with the same name, it won't be
+  overwritten unless the `!global` flag is used. For example, `$var: value
+  !global` will assign to `$var` globally. This behavior can be detected using
+  `feature-exists(global-variable-shadowing)`.
+
+* Unescaped newlines in SassScript strings in SCSS are deprecated, since they're
+  invalid according to the CSS string grammar. To include a newline in a string,
+  use "\a" or "\a " as in CSS.
+
+* The subject selector operator, `!`, is deprecated and will produce a warning
+  if used. The `:has()` selector should be used instead.
+
+* Quoted strings in lists will now be unquoted when those lists are interpolated
+  in anything else. This makes it much easier to add user-defined strings to
+  selector lists returned by `&`. This is unlikely to be behavior anyone's
+  relying on and would be difficult to deprecate gracefully, so there will be no
+  deprecation period for this change.
+
+## 3.3.14 (1 August 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.14).
+
+* Improved edge-case parsing of special-syntax functions like `calc()` and
+  `expression()`.
+
+* Fixed a bug when using `--update` with absolute paths on Windows.
+
+## 3.3.13 (31 July 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.13).
+
+* Fixed a bug on ruby 2.0 where watching several folders was broken.
+  Work around for a [bug in listen](https://github.com/guard/listen/issues/243).
+
+## 3.3.12 (29 July 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.12).
+
+* The Sass::Compiler class has a number of new minor features to support
+  Compass's compilation needs:
+
+  * The template_deleted event of the Sass Compiler class now runs before the
+    side-effect events.
+  * The Sass Compiler class can now be used to clean output files.
+  * The Sass Compiler class now exposes an updating_stylesheets callback
+    that runs before stylesheets are mass-updated.
+  * The Sass Compiler class now exposes a the compilation_starting callback
+    that runs before an individual stylesheet is compiled.
+  * The Sass Compiler class now runs the updated_stylesheets callback
+    after stylesheets are mass-updated.
+  * The Sass Compiler can now be made to skip the initial update
+    when watching.
+
+## 3.3.11 (25 July 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.11).
+
+* `str-slice()` now correctly returns an empty string when `$end-at` is 0.
+
+## 3.3.10 (11 July 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.10).
+
+* Properly encode URLs in sourcemaps.
+
+## 3.3.9 (27 June 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.9).
+
+* Defining a function named "and", "or", or "not" is now an error at
+  definition-time. This isn't considered a backwards-incompatible change because
+  although these functions could be defined previously, they could never be
+  successfully invoked.
+
+* Fix deprecation warnings for using `File.exists?` on recent Ruby versions.
+
+* Fix a bug where `@extend` within `@at-root` could crash the compiler.
+
+* Gracefully handle the inability to change cache files' permissions.
+
+## 3.3.8 (20 May 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.8).
+
+* When a use of `@at-root` doesn't add any new rules, it will no longer split
+  its containing block in two ([issue 1239][]).
+
+* Fix a `sass-convert` bug where rules would occasionally be folded together
+  incorrectly when converting from CSS to Sass.
+
+* Fix error messages for dynamically-generated `@media` queries with empty
+  queries.
+
+[issue 1239]: https://github.com/nex3/sass/issues/1239
+
+## 3.3.7 (2 May 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.7).
+
+* Properly set the default `Sass::Plugin` options in Rails 3.0.
+
+* Fix a few cases where source ranges were being computed incorrectly for
+  SassScript expressions.
+
+## 3.3.6 (25 April 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.6).
+
+* The `inspect()` function will only interpret `/` between numbers as division
+  under the same circumstances that it would be interpreted as division when
+  used in a property.
+
+* Fix several cases where parsing pathological comments would cause Sass to take
+  exponential time and consume all available CPU.
+
+## 3.3.5 (14 April 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.5).
+
+* Fix `LoadError`s when using `--watch` with the bundled version of Listen.
+
+* Properly parse negative numbers preceded by a comment.
+
+* Avoid unnecessary interpolation when running `sass-convert` on media queries.
+
+* Avoid freezing Ruby's `true` or `false` values.
+
+## 3.3.4 (21 March 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.4).
+
+* Improve the warning message for `index(...) == false`.
+
+* Fix the use of directives like `@font-face` within `@at-root`.
+
+* Fix a `sass --watch` issue on Windows where too many files would be updated
+  on every change.
+
+* Avoid freezing Ruby's `nil` value.
+
+## 3.3.3 (14 March 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.3).
+
+* Fix a bug in Sass that was causing caching errors when unserializable objects
+  were in the Ruby options hash. Note that these errors may persist when using
+  Sass with Sprockets until the Sprockets importer is made serializable.
+
+## 3.3.2 (11 March 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.2).
+
+* Fix a bug with loading the bundled version of Listen.
+
+## 3.3.1 (10 March 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.1).
+
+This release includes a number of fixes for issues that popped up in the
+immediate aftermath of the 3.3.0 release.
+
+### Re-bundle [listen](http://github.com/guard/listen)
+
+With 3.3.0, we un-bundled the listen library from Sass. We did so hoping that it
+would make it easier for users to keep up to date with the latest features and
+bug fixes, but unfortunately listen 2.0 and on have dropped support for Ruby
+1.8.7, which Sass continues to support. Further complicating things, RubyGems
+lacks the ability to install only the version of listen supported by the current
+Ruby installation, so we were unable to use a standard Gem dependency on listen.
+
+To work around this, we tried to piggyback on RubyGems' native extension support
+to install the correct version of listen when Sass was installed. This is what
+we released in 3.3.0. However, this caused numerous problems in practice,
+especially for users on Windows. It quickly became clear that this wasn't a
+viable long-term solution.
+
+As such, we're going back to the bundling strategy. While not perfect, this
+worked well enough for the duration of the Sass 3.2 release, and we expect it to
+cause much less havoc than un-bundling. We'll bundle listen 1.3.1, the most
+recent version that retains Ruby 1.8.7 compatibility. If a user of Sass has a
+more recent version of listen installed, that will be preferred to the bundled
+version. Listen versions through 2.7.0 have been tested, and we expect the code
+to work without modification on versions up to 3.0.0, assuming no major API
+changes.
+
+### Smaller Changes
+
+* Fixed a small interface incompatibility with listen 2.7.0.
+
+* Fix some corner cases of path handling on Windows.
+
+* Avoid errors when trying to watch read-only directories using listen 1.x.
+
+## 3.3.0 (7 March 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.3.0).
 
 ### SassScript Maps
 
@@ -175,6 +728,9 @@ There are a variety of functions for working with maps:
   merges two maps together into a new map. If there are any conflicts, the
   second map takes precedence, making this a good way to modify values in a map
   as well.
+
+* The {Sass::Script::Functions#map_remove `map-remove($map, $key)` function}
+  returns a new map with a key removed.
 
 * The {Sass::Script::Functions#map_keys `map-keys($map)` function} returns all
   the keys in a map as a comma-separated list.
@@ -258,10 +814,110 @@ Since it's just a migration feature, using lists of pairs in place of maps is
 already deprecated. Library authors should encourage their users to use actual
 maps instead.
 
+### Source Maps
+
+Sass now has the ability to generate standard JSON [source maps][] of a format
+that will soon be supported in most major browsers. These source maps tell the
+browser how to find the Sass styles that caused each CSS style to be generated.
+They're much more fine-grained than the old Sass-specific debug info that was
+generated; rather than providing the source location of entire CSS rules at a
+time, source maps provide the source location of each individual selector and
+property.
+
+Source maps can be generated by passing the `--sourcemap` flag to the `sass`
+executable, by passing the {file:SASS_REFERENCE.md#sourcemap-option `:sourcemap`
+option} to \{Sass::Plugin}, or by using the
+\{Sass::Engine#render\_with\_sourcemap} method. By default, Sass assumes that
+the source stylesheets will be made available on whatever server you're using,
+and that their relative location will be the same as it is on the local
+filesystem. If this isn't the case, you'll need to make a custom class that
+extends \{Sass::Importers::Base} or \{Sass::Importers::Filesystem} and overrides
+\{Sass::Importers::Base#public\_url `#public_url`}.
+
+Thanks to Alexander Pavlov for implementing this.
+
+[source maps]: https://docs.google.com/document/d/1U1RGAehQwRypUTovF1KRlpiOFze0b-_2gc6fAH0KY0k/edit?hl=en_US&pli=1&pli=1
+
+#### `@at-root`
+
+Sass 3.3 adds the `@at-root` directive, which is a way to tell Sass to
+put a collection of rules at the top-level root of the document. The
+easiest way to use it is with a selector:
+
+    .badge {
+      @at-root .info { ... }
+      @at-root .header { ... }
+    }
+
+In addition to using `@at-root` on a single selector, you can also use it on a
+whole block of them. For example:
+
+    .badge {
+      @at-root {
+        .info { ... }
+        .header { ... }
+      }
+    }
+
+Also produces:
+
+    .info { ... }
+    .header { ... }
+
+#### `@at-root (without: ...)` and `@at-root (with: ...)`
+
+By default, `@at-root` just excludes selectors. However, it's also
+possible to use `@at-root` to move outside of nested directives such
+as `@media` as well. For example:
+
+    @media print {
+      .page {
+        width: 8in;
+        @at-root (without: media) {
+          color: red;
+        }
+      }
+    }
+
+produces:
+
+    @media print {
+      .page {
+        width: 8in;
+      }
+    }
+    .page {
+      color: red;
+    }
+
+You can use `@at-root (without: ...)` to move outside of any
+directive. You can also do it with multiple directives separated by a
+space: `@at-root (without: media supports)` moves outside of both
+`@media` and `@supports` queries.
+
+There are two special values you can pass to `@at-root`. "rule" refers
+to normal CSS rules; `@at-root (without: rule)` is the same as
+`@at-root` with no query. `@at-root (without: all)` means that the
+styles should be moved outside of *all* directives and CSS rules.
+
+If you want to specify which directives or rules to include, rather
+than listing which ones should be excluded, you can use `with` instead
+of `without`. For example, `@at-root (with: rule)` will move outside
+of all directives, but will preserve any CSS rules.
+
 ### Smaller Improvements
 
-* [listen](http://github.com/guard/listen) is now a standard Gem dependency.
-  It's no longer bundled with Sass.
+* The parent selector, `&`, can be used with an identifier suffix. For
+  example, `&-suffix` and `&_suffix` are now legal. The suffix will be
+  added to the end of the parent selector, and will throw an error if
+  this isn't possible. `&` must still appear at the beginning of a
+  compound selector -- that is, `.foo-&` is still illegal.
+
+* [listen](http://github.com/guard/listen) is no longer bundled with
+  Sass, nor is it a standard RubyGems dependency. Instead, it's
+  automatically installed along with Sass in order to ensure that the
+  user ends up with a version of Listen that works with their local
+  Ruby version.
 
 * Sass now has numerous functions for working with strings:
   \{Sass::Script::Functions#str_length `str-length`} will return the length of a
@@ -285,6 +941,10 @@ maps instead.
 * The `set-nth($list, $n, $value)` function lets you construct a new
   list based on `$list`, with the nth element changed to the value
   specified.
+
+* In order to make it easier for mixins to process maps, they may now
+  recursively call themselves and one another. It is no longer an
+  error to have a mixin `@include` loop.
 
 * Add "grey" and "transparent" as recognized SassScript colors. Thanks to [Rob
   Wierzbowski](https://github.com/robwierzbowski).
@@ -325,6 +985,10 @@ maps instead.
   `e`, and `f`; and then `g`, `h`, and `i`. For more information, see
   {file:SASS_REFERENCE.md#each-multi-assign the `@each` reference}.
 
+* `@for` loops can now go downward as well as upward. For example,
+  `@for $var from 5 through 1` will set `$var` to `5`, `4`, `3`, `2`,
+  and `1`. Thanks to [Robin Roestenburg](http://twitter.com/robinroest).
+
 * There is a new {Sass::Script::Value::Helpers convenience API} for creating
   Sass values from within ruby extensions.
 
@@ -340,13 +1004,24 @@ maps instead.
   contain more CSS rules or properties are now bubbled up through
   their parent rules.
 
-* A new function `inspect($value)` is provided for debugging the current Sass
-  representation of a value.
+* A new `random()` function returns a random number.
+
+* A new function inspect($value) is provided for debugging the current
+  sass representation of a value.
 
 * The `@debug` directive now automatically inspects sass objects that are not
   strings.
 
 * Numbers will no longer be emitted in scientific notation.
+
+* `sass-convert` will now correctly handle silent (`//`-style) comments
+  contained within loud (`/* */`-style) comments.
+
+* Allow modulo arithmetic for numbers with compatible units. Thanks to
+  [Isaac Devine](http://www.devinesystems.co.nz).
+
+* Keyword arguments to mixins and functions that contain hyphens will have the
+  hyphens preserved when using `sass-convert`.
 
 ### Backwards Incompatibilities -- Must Read!
 
@@ -373,7 +1048,7 @@ maps instead.
 * The automatic placement of the current working directory onto the Sass
   load path is now deprecated as this causes unpredictable build
   processes.  If you need the current working directory to be available,
-  set `SASSPATH=.` in your shell's environment.
+  set `SASS_PATH=.` in your shell's environment.
 
 * `Sass::Compiler.on_updating_stylesheet` has been removed.
 
@@ -410,7 +1085,67 @@ maps instead.
   for example, `$color: blue !global` will always assign to the global
   `$color` variable.
 
-## 3.2.12
+* Two numbers separated by a hyphen with no whitespace will now be
+  parsed as a subtraction operation rather than two numbers in a list.
+  That is, `2px-1px` will parse the same as `2px - 1px` rather than
+  `2px -1px`.
+
+* `index()`'s `false` return value when a value isn't found is deprecated. In
+  future Sass releases it will be `null` instead, so it should be used in ways
+  that are compatible with both `false` and `null`.
+
+* `mix()`'s arguments are now `$color1` and `$color2` rather than
+  `$color-1` and `$color-2`, in keeping with other functions.
+
+* `comparable()`'s arguments are now `$number1` and `$number2` rather than
+  `$number-1` and `$number-2`, in keeping with other functions.
+
+* `percentage()`, `round()`, `ceil()`, `floor()`, and `abs()` now
+  take arguments named '$number' instead of '$value'.
+
+## 3.2.16 (17 March 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.16).
+
+* Handle a race condition in the filesystem cache store when a cache
+  entry becomes invalidated.
+
+## 3.2.15 (7 March 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.15).
+
+* Support `&.foo` when the parent selector has a newline followed by a comma.
+
+## 3.2.14 (24 January 2014)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.14).
+
+* Don't crash when parsing a directive with no name in the indented syntax.
+
+* Clean up file paths when importing to avoid errors for overlong path
+  names.
+
+* Parse calls to functions named `true`, `false`, and `null` as function calls.
+
+* Don't move CSS `@import`s to the top of the file unless it's necessary.
+
+## 3.2.13 (19 December 2013)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.13).
+
+* Numbers returned by user-defined functions now trigger division, just like
+  numbers stored in variables.
+
+* Support importing files in paths with open brackets.
+
+* Fix `sass-convert`'s handling of rules with empty bodies when converting from
+  CSS.
+
+* Fix CSS imports using `url()` with a quoted string and media queries.
+
+## 3.2.12 (4 October 2013)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.12).
 
 * Add a couple missing `require`s, fixing some load errors, especially when
   using the command-line interface.
@@ -420,7 +1155,9 @@ maps instead.
   is being used and where it seems intuitively like selectors shouldn't be
   eliminated.
 
-## 3.2.11
+## 3.2.11 (27 September 2013)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.11).
 
 * Fix `@extend`'s semantics with respect to pseudo-elements. They are no longer
   treated identically to pseudo-classes.
@@ -436,7 +1173,9 @@ maps instead.
 
 * Fix some thread-safety issues.
 
-## 3.2.10
+## 3.2.10 (26 July 2013)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.10).
 
 * Use the Sass logger infrastructure for `@debug` directives.
 
@@ -450,7 +1189,9 @@ maps instead.
 * Fix a bug where `sass --unix-newlines` and `sass-convert --in-place` are not
   working on Windows (thanks [SATO Kentaro](http://www.ranvis.com)).
 
-## 3.2.9
+## 3.2.9 (10 May 2013)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.9).
 
 * Fix a bug where `@extend`s would occasionally cause a selector to be generated
   with the incorrect specificity.
@@ -465,7 +1206,9 @@ maps instead.
 
 [cc bug]: http://jes.st/2013/ie7s-css-breaking-content-counter-bug/
 
-## 3.2.8
+## 3.2.8 (22 April 2013)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.8).
 
 * Fix some edge cases where redundant selectors were emitted when using
   `@extend`.
@@ -490,7 +1233,9 @@ maps instead.
 * Fix a case where a mixin loop error would be incorrectly reported when using
   `@content`.
 
-## 3.2.7
+## 3.2.7 (8 March 2013)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.7).
 
 * The \{Sass::Script::Functions#index `index`} and \{Sass::Script::Functions#zip
   `zip`} functions now work like all other list functions and treat individual
@@ -505,7 +1250,9 @@ maps instead.
 * Fix a case where very long numbers would cause the SCSS parser to
   take exponential time.
 
-## 3.2.6
+## 3.2.6 (22 February 2013)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.6).
 
 * Support for Rubinius 2.0.0.rc1. All tests pass in 1.8 mode. 1.9 mode has some
   tests blocked on [Rubinius issue
@@ -524,7 +1271,9 @@ maps instead.
 * Update the bundled version of [listen](http://github.com/guard/listen) to
   0.7.2.
 
-## 3.2.5
+## 3.2.5 (4 January 2013)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.5).
 
 * Fix a bug where bogus `@extend` warnings were being generated.
 
@@ -537,7 +1286,9 @@ maps instead.
 * Fix incorrect line numbering when using DOS line endings with the indented
   syntax.
 
-## 3.2.4
+## 3.2.4 (21 December 2012)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.4).
 
 * Fix imports from `.jar` files in JRuby. Thanks to [Alex
   Hvostov](https://github.com/argv-minus-one).
@@ -547,7 +1298,9 @@ maps instead.
 * Fix a parsing performance bug where long decimals would occasionally take many
   minutes to parse.
 
-## 3.2.3
+## 3.2.3 (9 November 2012)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.3).
 
 * `sass --watch` no longer crashs when a file in a watched directory is deleted.
 
@@ -558,7 +1311,9 @@ maps instead.
 * Work around a performance bug that arises from using `@extend` with
   deeply-nested selectors.
 
-## 3.2.2
+## 3.2.2 (2 November 2012)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.2).
 
 * Add a `--poll` option to force `sass --watch` to use the polling backend to
   [Listen](https://github.com/guard/listen).
@@ -594,9 +1349,13 @@ maps instead.
 
 ## 3.2.1 (15 August 2012)
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.1).
+
 * Fix a buggy interaction with Pow and Capybara that caused `EOFError`s.
 
 ## 3.2.0 (10 August 2012)
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.2.0).
 
 ### `@content`
 
@@ -800,6 +1559,8 @@ This will not print a warning.
 
 ## 3.1.21 (10 August 2012)
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.21).
+
 * Preserve single-line comments that are embedded within multi-line comments.
 * Preserve newlines in nested selectors when those selectors are used multiple
   times in the same document.
@@ -811,6 +1572,8 @@ This will not print a warning.
   [CSS Spec](http://www.w3.org/TR/CSS21/syndata.html#length-units)
 
 ## 3.1.20
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.20).
 
 * Don't crash if a UTF encoding isn't found. Thanks to [Andrew
   Garbutt](http://github.com/techsplicer).
@@ -826,12 +1589,16 @@ This will not print a warning.
 
 ## 3.1.19
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.19).
+
 * Fix an `uninitialized constant Sass::Exec::Sass::Util` error when using the
   command-line tool.
 * Allow `@extend` within directives such as `@media` as long as it only extends
   selectors that are within the same directive.
 
 ## 3.1.18
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.18).
 
 * Ruby 2.0 compatibility. Thanks to [Jeremy
   Kemper](https://github.com/jeremy).
@@ -843,6 +1610,8 @@ This will not print a warning.
   error in 3.2.
 
 ## 3.1.17
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.17).
 
 * Don't crash when calling `#inspect` on an internal Sass tree object in Ruby
   1.9.
@@ -856,6 +1625,8 @@ This will not print a warning.
 * Properly convert nested `@if` statements with `sass-convert`.
 
 ## 3.1.16
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.16).
 
 * Fix some bugs in `sass-convert` selector parsing when converting from CSS.
 * Substantially improve compilation performance on Ruby 1.8.
@@ -871,6 +1642,8 @@ This will not print a warning.
 
 ## 3.1.15
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.15).
+
 * Support extending multiple comma-separated selectors (e.g. `@extend .foo, .bar`).
   This is just a terser way to write multiple `@extend`s
   (e.g. `@extend .foo; @extend .bar`).
@@ -885,9 +1658,13 @@ This will not print a warning.
 
 ## 3.1.14
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.14).
+
 * Fix a typo that was causing crashes on Ruby 1.9.
 
 ## 3.1.13
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.13).
 
 * Fix a smattering of subtle bugs that would crop up when using multibyte
   character sets.
@@ -902,6 +1679,8 @@ This will not print a warning.
 
 ## 3.1.12
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.12).
+
 * Compatibility with the `mathn` library
   (thanks to [Thomas Walpole](https://github.com/twalpole)).
 * Fix some infinite loops with mixins that were previously uncaught.
@@ -915,6 +1694,8 @@ This will not print a warning.
   `@media foo and baz, bar and baz { ... }`.
 
 ## 3.1.11
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.11).
 
 * Allow control directives (such as `@if`) to be nested beneath properties.
 * Allow property names to begin with a hyphen followed by interpolation (e.g. `-#{...}`).
@@ -936,9 +1717,13 @@ This will not print a warning.
 
 ## 3.1.10
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.10).
+
 * Fix another aspect of the 3.1.8 regression relating to `+`.
 
 ## 3.1.9
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.9).
 
 * Fix a regression in 3.1.8 that broke the `+` combinator in selectors.
 
@@ -946,6 +1731,8 @@ This will not print a warning.
   Using it with multi-line comments (e.g. `/*!`) still works.
 
 ## 3.1.8
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.8).
 
 * Deprecate parent selectors followed immediately by identifiers (e.g. `&foo`).
   This should never have worked, since it violates the rule
@@ -983,9 +1770,13 @@ This will not print a warning.
 
 ## 3.1.7
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.7).
+
 * Don't crash when doing certain operations with `@function`s.
 
 ## 3.1.6
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.6).
 
 * The option `:trace_selectors` can now be used to emit a full trace
   before each selector. This can be helpful for in-browser debugging of
@@ -998,10 +1789,14 @@ This will not print a warning.
 
 ## 3.1.5
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.5).
+
 * Updated the vendored FSSM version, which will avoid segfaults on OS
   X Lion when using `--watch`.
 
 ## 3.1.4
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.4).
 
 * Sass no longer unnecessarily caches the sass options hash.
   This allows objects that cannot be marshaled to be placed into the
@@ -1009,11 +1804,15 @@ This will not print a warning.
 
 ## 3.1.3
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.3).
+
 * Sass now logs message thru a logger object which can be changed to
   provide integration with other frameworks' logging infrastructure.
 
 
 ## 3.1.2
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.2).
 
 * Fix some issues that were breaking Sass when running within Rubinius.
 * Fix some issues that were affecting Rails 3.1 integration.
@@ -1027,9 +1826,13 @@ This will not print a warning.
 
 ## 3.1.1
 
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.1).
+
 * Make sure `Sass::Plugin` is loaded at the correct time in Rails 3.
 
 ## 3.1.0
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.1.0).
 
 * Add an {Sass::Script::Functions#invert `invert` function} that takes the inverse of colors.
 
@@ -1308,7 +2111,7 @@ and distributing those stylesheets across multiple files.
 
 ## 3.0.25
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.25).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.25).
 
 * When displaying a Sass error in an imported stylesheet,
   use the imported stylesheet's contents rather than the top-level stylesheet.
@@ -1322,7 +2125,7 @@ and distributing those stylesheets across multiple files.
 
 ## 3.0.24
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.24).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.24).
 
 * Raise an error when `@else` appears without an `@if` in SCSS.
 
@@ -1331,7 +2134,7 @@ and distributing those stylesheets across multiple files.
 
 ## 3.0.23
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.23).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.23).
 
 * Fix the error message for unloadable modules when running the executables under Ruby 1.9.2.
 
@@ -1372,7 +2175,7 @@ This means that under Ruby 1.8 it's *not* safe to import files with different en
 
 ## 3.0.22
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.22).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.22).
 
 * Remove `vendor/sass`, which snuck into the gem by mistake
   and was causing trouble for Heroku users (thanks to [Jacques Crocker](http://railsjedi.com/)).
@@ -1382,7 +2185,7 @@ This means that under Ruby 1.8 it's *not* safe to import files with different en
 
 ## 3.0.21
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.21).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.21).
 
 * Fix the permissions errors for good.
 
@@ -1390,7 +2193,7 @@ This means that under Ruby 1.8 it's *not* safe to import files with different en
 
 ## 3.0.20
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.20).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.20).
 
 * Fix some permissions errors.
 
@@ -1398,7 +2201,7 @@ This means that under Ruby 1.8 it's *not* safe to import files with different en
 
 ## 3.0.19
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.19).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.19).
 
 * Make the alpha value for `rgba` colors respect
   {Sass::Script::Value::Number.precision}.
@@ -1415,7 +2218,7 @@ This means that under Ruby 1.8 it's *not* safe to import files with different en
 
 ## 3.0.18
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.18).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.18).
 
 * Don't require `rake` in the gemspec, for bundler compatibility under
   JRuby. Thanks to [Gordon McCreight](http://www.gmccreight.com/blog).
@@ -1434,7 +2237,7 @@ This means that under Ruby 1.8 it's *not* safe to import files with different en
 
 ## 3.0.17
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.17).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.17).
 
 * Disallow `#{}` interpolation in `@media` queries or unrecognized directives.
   This was never allowed, but now it explicitly throws an error
@@ -1449,7 +2252,7 @@ This means that under Ruby 1.8 it's *not* safe to import files with different en
 
 ## 3.0.16
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.16).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.16).
 
 * Fix a bug where certain sorts of comments would get improperly
   rendered in the `:compact` style.
@@ -1464,7 +2267,7 @@ This means that under Ruby 1.8 it's *not* safe to import files with different en
 
 ## 3.0.15
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.15).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.15).
 
 * Fix a bug where `sass --watch` and `sass --update` were completely broken.
 
@@ -1472,7 +2275,7 @@ This means that under Ruby 1.8 it's *not* safe to import files with different en
 
 ## 3.0.14
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.14).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.14).
 
 * Properly parse paths with drive letters on Windows (e.g. `C:\Foo\Bar.sass`)
   in the Sass executable.
@@ -1484,7 +2287,7 @@ This means that under Ruby 1.8 it's *not* safe to import files with different en
 
 ## 3.0.13
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.13).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.13).
 
 ## CSS `@import` Directives
 
@@ -1531,7 +2334,7 @@ Upgrade to Rails 3.0.0.beta4 if you haven't already.
 
 ## 3.0.12
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.12).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.12).
 
 ## Rails 3 Support
 
@@ -1546,7 +2349,7 @@ Haml 3.0.13 will only support 3.0.0.beta.4.
 
 ## 3.0.11
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.11).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.11).
 
 There were no changes made to Haml between versions 3.0.10 and 3.0.11.
 
@@ -1563,7 +2366,7 @@ wasn't reloaded at the proper time.
 
 ## 3.0.10
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.10).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.10).
 
 ### Appengine-JRuby Support
 
@@ -1583,20 +2386,20 @@ even when no controllers are being accessed.
 
 ## 3.0.9
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.9).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.9).
 
 There were no changes made to Sass between versions 3.0.8 and 3.0.9.
 A bug in Gemcutter caused the gem to be uploaded improperly.
 
 ## 3.0.8
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.8).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.8).
 
 * Fix a bug with Rails versions prior to Rails 3.
 
 ## 3.0.7
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.7).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.7).
 
 ### Encoding Support
 
@@ -1618,13 +2421,13 @@ for specifying the encoding of Sass/SCSS/CSS files.
 
 ## 3.0.6
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.6).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.6).
 
 There were no changes made to Sass between versions 3.0.5 and 3.0.6.
 
 ## 3.0.5
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.5).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.5).
 
 ### `#{}` Interpolation in Properties
 
@@ -1683,7 +2486,7 @@ Make the `--no-cache` flag properly forbid Sass from writing `.sass-cache` files
 
 ## 3.0.4
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.4).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.4).
 
 * Raise an informative error when function arguments have a mispaced comma,
   as in `foo(bar, )`.
@@ -1693,7 +2496,7 @@ Make the `--no-cache` flag properly forbid Sass from writing `.sass-cache` files
 
 ## 3.0.3
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.3).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.3).
 
 ### Rails 3 Support
 
@@ -1720,7 +2523,7 @@ should *really* work with this release.
 
 ## 3.0.2
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.2).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.2).
 
 ### Merb 1.1.0 Support
 
@@ -1734,7 +2537,7 @@ Fixed a bug inserting the Sass plugin into the Merb 1.1.0 Rack application.
 
 ## 3.0.1
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.1).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.1).
 
 ### Installation in Rails
 
@@ -1770,9 +2573,11 @@ Thus, three new methods have been added for handling it:
   Converts the template location option to an array and removes an existing location.
 
 ## 3.0.0
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.0).
 {#3-0-0}
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/3.0.0).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/3.0.0).
 
 ### Deprecations -- Must Read!
 {#3-0-0-deprecations}
@@ -2491,7 +3296,7 @@ This is also available via the `--debug-info` command-line flag.
 
 ## 2.2.24
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.24).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.24).
 
 * Parent references -- the `&` character --
   may only be placed at the beginning of simple selector sequences in Sass 3.
@@ -2500,7 +3305,7 @@ This is also available via the `--debug-info` command-line flag.
 
 ## 2.2.23
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.23).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.23).
 
 * Don't crash when `rake gems` is run in Rails with Sass installed.
   Thanks to [Florian Frank](http://github.com/flori).
@@ -2517,7 +3322,7 @@ This is also available via the `--debug-info` command-line flag.
 
 ## 2.2.22
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.22).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.22).
 
 * Add a railtie so Haml and Sass will be automatically loaded in Rails 3.
   Thanks to [Daniel Neighman](http://pancakestacks.wordpress.com/).
@@ -2526,7 +3331,7 @@ This is also available via the `--debug-info` command-line flag.
 
 ## 2.2.21
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.21).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.21).
 
 * Fix a few bugs in the git-revision-reporting in {Sass::Version#version}.
   In particular, it will still work if `git gc` has been called recently,
@@ -2538,7 +3343,7 @@ This is also available via the `--debug-info` command-line flag.
 
 ## 2.2.20
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.20).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.20).
 
 * If the cache file for a given Sass file is corrupt
   because it doesn't have enough content,
@@ -2551,13 +3356,15 @@ This is also available via the `--debug-info` command-line flag.
 
 ## 2.2.19
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.18).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.19).
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.18).
 
 There were no changes made to Sass between versions 2.2.18 and 2.2.19.
 
 ## 2.2.18
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.18).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.18).
 
 * Use `Rails.env` rather than `RAILS_ENV` when running under Rails 3.0.
   Thanks to [Duncan Grazier](http://duncangrazier.com/).
@@ -2581,7 +3388,9 @@ There were no changes made to Sass between versions 2.2.18 and 2.2.19.
 
 ## 2.2.17
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.16).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.17).
+
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.16).
 
 * When the {file:SASS_REFERENCE.md#full_exception-option `:full_exception` option}
   is false, raise the error in Ruby code rather than swallowing it
@@ -2611,7 +3420,7 @@ There were no changes made to Sass between versions 2.2.18 and 2.2.19.
 
 ## 2.2.16
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.16).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.16).
 
 * Fixed a bug where modules containing user-defined Sass functions
   weren't made available when simply included in {Sass::Script::Functions}
@@ -2621,7 +3430,7 @@ There were no changes made to Sass between versions 2.2.18 and 2.2.19.
 
 ## 2.2.15
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.15).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.15).
 
 * Added {Sass::Script::Value::Color#with} for a way of setting color channels
   that's easier than manually constructing a new color
@@ -2633,7 +3442,7 @@ There were no changes made to Sass between versions 2.2.18 and 2.2.19.
 
 ## 2.2.14
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.14).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.14).
 
 * All Sass functions now raise explicit errors if their inputs
   are of the incorrect type.
@@ -2670,19 +3479,19 @@ See the {Sass::Plugin::Rack} documentation for more details.
 
 ## 2.2.13
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.13).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.13).
 
 There were no changes made to Sass between versions 2.2.12 and 2.2.13.
 
 ## 2.2.12
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.12).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.12).
 
 * Fix a stupid bug introduced in 2.2.11 that broke the Sass Rails plugin.
 
 ## 2.2.11
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.11).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.11).
 
 * Added a note to errors on properties that could be pseudo-classes (e.g. `:focus`)
   indicating that they should be backslash-escaped.
@@ -2705,7 +3514,7 @@ There were no changes made to Sass between versions 2.2.12 and 2.2.13.
 
 ## 2.2.10
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.10).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.10).
 
 * Add support for attribute selectors with spaces around the `=`.
   For example:
@@ -2715,25 +3524,25 @@ There were no changes made to Sass between versions 2.2.12 and 2.2.13.
 
 ## 2.2.9
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.9).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.9).
 
 There were no changes made to Sass between versions 2.2.8 and 2.2.9.
 
 ## 2.2.8
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.8).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.8).
 
 There were no changes made to Sass between versions 2.2.7 and 2.2.8.
 
 ## 2.2.7
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.7).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.7).
 
 There were no changes made to Sass between versions 2.2.6 and 2.2.7.
 
 ## 2.2.6
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.6).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.6).
 
 * Don't crash when the `__FILE__` constant of a Ruby file is a relative path,
   as apparently happens sometimes in TextMate
@@ -2743,13 +3552,13 @@ There were no changes made to Sass between versions 2.2.6 and 2.2.7.
 
 ## 2.2.5
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.5).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.5).
 
 There were no changes made to Sass between versions 2.2.4 and 2.2.5.
 
 ## 2.2.4
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.4).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.4).
 
 * Don't add `require 'rubygems'` to the top of init.rb when installed
   via `sass --rails`. This isn't necessary, and actually gets
@@ -2760,14 +3569,14 @@ There were no changes made to Sass between versions 2.2.4 and 2.2.5.
 
 ## 2.2.3
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.3).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.3).
 
 Sass 2.2.3 prints line numbers for warnings about selectors
 with no properties.
 
 ## 2.2.2
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.2).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.2).
 
 Sass 2.2.2 is a minor bug-fix release.
 Notable changes include better parsing of mixin definitions and inclusions
@@ -2775,7 +3584,7 @@ and better support for Ruby 1.9.
 
 ## 2.2.1
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.1).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.1).
 
 Sass 2.2.1 is a minor bug-fix release.
 
@@ -2788,7 +3597,7 @@ Sass 2.2.1 is a minor bug-fix release.
 
 ## 2.2.0
 
-[Tagged on GitHub](http://github.com/nex3/sass/commit/2.2.0).
+[Tagged on GitHub](https://github.com/sass/sass/releases/tag/2.2.0).
 
 The 2.2 release marks a significant step in the evolution of the Sass
 language. The focus has been to increase the power of Sass to keep

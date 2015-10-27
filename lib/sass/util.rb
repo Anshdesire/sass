@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 require 'erb'
 require 'set'
 require 'enumerator'
@@ -5,6 +6,7 @@ require 'stringio'
 require 'rbconfig'
 require 'uri'
 require 'thread'
+require 'pathname'
 
 require 'sass/root'
 require 'sass/util/subset_map'
@@ -16,7 +18,7 @@ module Sass
 
     # An array of ints representing the Ruby version number.
     # @api public
-    RUBY_VERSION = ::RUBY_VERSION.split(".").map {|s| s.to_i}
+    RUBY_VERSION_COMPONENTS = RUBY_VERSION.split(".").map {|s| s.to_i}
 
     # The Ruby engine we're running under. Defaults to `"ruby"`
     # if the top-level constant is undefined.
@@ -74,6 +76,7 @@ module Sass
       # We don't delegate to map_hash for performance here
       # because map_hash does more than is necessary.
       rv = hash.class.new
+      hash = hash.as_stored if hash.is_a?(NormalizedMap)
       hash.each do |k, v|
         rv[k] = yield(v)
       end
@@ -99,7 +102,7 @@ module Sass
       rv = hash.class.new
       hash.each do |k, v|
         new_key, new_value = yield(k, v)
-        rv.delete(k)
+        new_key = hash.denormalize(new_key) if hash.is_a?(NormalizedMap) && new_key == k
         rv[new_key] = new_value
       end
       rv
@@ -135,6 +138,17 @@ module Sass
       [[value, range.first].max, range.last].min
     end
 
+    # Like [Fixnum.round], but leaves rooms for slight floating-point
+    # differences.
+    #
+    # @param value [Numeric]
+    # @return [Numeric]
+    def round(value)
+      # If the number is within epsilon of X.5, round up.
+      return value.ceil if (value % 1) - 0.5 > -0.00001
+      value.round
+    end
+
     # Concatenates all strings that are adjacent in an array,
     # while leaving other elements as they are.
     #
@@ -160,6 +174,43 @@ module Sass
       end
     end
 
+    # Non-destructively replaces all occurrences of a subsequence in an array
+    # with another subsequence.
+    #
+    # @example
+    #   replace_subseq([1, 2, 3, 4, 5], [2, 3], [:a, :b])
+    #     #=> [1, :a, :b, 4, 5]
+    #
+    # @param arr [Array] The array whose subsequences will be replaced.
+    # @param subseq [Array] The subsequence to find and replace.
+    # @param replacement [Array] The sequence that `subseq` will be replaced with.
+    # @return [Array] `arr` with `subseq` replaced with `replacement`.
+    def replace_subseq(arr, subseq, replacement)
+      new = []
+      matched = []
+      i = 0
+      arr.each do |elem|
+        if elem != subseq[i]
+          new.push(*matched)
+          matched = []
+          i = 0
+          new << elem
+          next
+        end
+
+        if i == subseq.length - 1
+          matched = []
+          i = 0
+          new.push(*replacement)
+        else
+          matched << elem
+          i += 1
+        end
+      end
+      new.push(*matched)
+      new
+    end
+
     # Intersperses a value in an enumerable, as would be done with `Array#join`
     # but without concatenating the array together afterwards.
     #
@@ -168,6 +219,19 @@ module Sass
     # @return [Array]
     def intersperse(enum, val)
       enum.inject([]) {|a, e| a << e << val}[0...-1]
+    end
+
+    def slice_by(enum)
+      results = []
+      enum.each do |value|
+        key = yield(value)
+        if !results.empty? && results.last.first == key
+          results.last.last << value
+        else
+          results << [key, [value]]
+        end
+      end
+      results
     end
 
     # Substitutes a sub-array of one array with another sub-array.
@@ -212,7 +276,7 @@ module Sass
     #     #  [2, 4, 5]]
     def paths(arrs)
       arrs.inject([[]]) do |paths, arr|
-        flatten(arr.map {|e| paths.map {|path| path + [e]}}, 1)
+        arr.map {|e| paths.map {|path| path + [e]}}.flatten(1)
       end
     end
 
@@ -285,6 +349,18 @@ module Sass
       minuend.select {|e| set.include?(e)}
     end
 
+    # Returns the maximum of `val1` and `val2`. We use this over \{Array.max} to
+    # avoid unnecessary garbage collection.
+    def max(val1, val2)
+      val1 > val2 ? val1 : val2
+    end
+
+    # Returns the minimum of `val1` and `val2`. We use this over \{Array.min} to
+    # avoid unnecessary garbage collection.
+    def min(val1, val2)
+      val1 <= val2 ? val1 : val2
+    end
+
     # Returns a string description of the character that caused an
     # `Encoding::UndefinedConversionError`.
     #
@@ -345,7 +421,7 @@ module Sass
     def caller_info(entry = nil)
       # JRuby evaluates `caller` incorrectly when it's in an actual default argument.
       entry ||= caller[1]
-      info = entry.scan(/^(.*?):(-?.*?)(?::.*`(.+)')?$/).first
+      info = entry.scan(/^((?:[A-Za-z]:)?.*?):(-?.*?)(?::.*`(.+)')?$/).first
       info[1] = info[1].to_i
       # This is added by Rubinius to designate a block, but we don't care about it.
       info[2].sub!(/ \{\}\Z/, '') if info[2]
@@ -487,6 +563,24 @@ module Sass
       version_geq(ActionPack::VERSION::STRING, version)
     end
 
+    # Returns whether this environment is using Listen
+    # version 2.0.0 or greater.
+    #
+    # @return [Boolean]
+    def listen_geq_2?
+      return @listen_geq_2 unless @listen_geq_2.nil?
+      @listen_geq_2 =
+        begin
+          # Make sure we're loading listen/version from the same place that
+          # we're loading listen itself.
+          load_listen!
+          require 'listen/version'
+          version_geq(::Listen::VERSION, '2.0.0')
+        rescue LoadError
+          false
+        end
+    end
+
     # Returns an ActionView::Template* class.
     # In pre-3.0 versions of Rails, most of these classes
     # were of the form `ActionView::TemplateFoo`,
@@ -537,15 +631,10 @@ module Sass
       @jruby = RUBY_PLATFORM =~ /java/
     end
 
-    # @see #jruby_version-class_method
-    def jruby_version
-      Sass::Util.jruby_version
-    end
-
     # Returns an array of ints representing the JRuby version number.
     #
     # @return [Array<Fixnum>]
-    def self.jruby_version
+    def jruby_version
       @jruby_version ||= ::JRUBY_VERSION.split(".").map {|s| s.to_i}
     end
 
@@ -558,6 +647,102 @@ module Sass
         Dir.glob(path) {|f| yield(f)}
       else
         Dir.glob(path)
+      end
+    end
+
+    # Like `Pathname.new`, but normalizes Windows paths to always use backslash
+    # separators.
+    #
+    # `Pathname#relative_path_from` can break if the two pathnames aren't
+    # consistent in their slash style.
+    #
+    # @param path [String]
+    # @return [Pathname]
+    def pathname(path)
+      path = path.tr("/", "\\") if windows?
+      Pathname.new(path)
+    end
+
+    # Like `Pathname#cleanpath`, but normalizes Windows paths to always use
+    # backslash separators. Normally, `Pathname#cleanpath` actually does the
+    # reverse -- it will convert backslashes to forward slashes, which can break
+    # `Pathname#relative_path_from`.
+    #
+    # @param path [String, Pathname]
+    # @return [Pathname]
+    def cleanpath(path)
+      path = Pathname.new(path) unless path.is_a?(Pathname)
+      pathname(path.cleanpath.to_s)
+    end
+
+    # Returns `path` with all symlinks resolved.
+    #
+    # @param path [String, Pathname]
+    # @return [Pathname]
+    def realpath(path)
+      path = Pathname.new(path) unless path.is_a?(Pathname)
+
+      # Explicitly DON'T run #pathname here. We don't want to convert
+      # to Windows directory separators because we're comparing these
+      # against the paths returned by Listen, which use forward
+      # slashes everywhere.
+      begin
+        path.realpath
+      rescue SystemCallError
+        # If [path] doesn't actually exist, don't bail, just
+        # return the original.
+        path
+      end
+    end
+
+    # Returns `path` relative to `from`.
+    #
+    # This is like `Pathname#relative_path_from` except it accepts both strings
+    # and pathnames, it handles Windows path separators correctly, and it throws
+    # an error rather than crashing if the paths use different encodings
+    # (https://github.com/ruby/ruby/pull/713).
+    #
+    # @param path [String, Pathname]
+    # @param from [String, Pathname]
+    # @return [Pathname?]
+    def relative_path_from(path, from)
+      pathname(path.to_s).relative_path_from(pathname(from.to_s))
+    rescue NoMethodError => e
+      raise e unless e.name == :zero?
+
+      # Work around https://github.com/ruby/ruby/pull/713.
+      path = path.to_s
+      from = from.to_s
+      raise ArgumentError("Incompatible path encodings: #{path.inspect} is #{path.encoding}, " +
+        "#{from.inspect} is #{from.encoding}")
+    end
+
+    # Converts `path` to a "file:" URI. This handles Windows paths correctly.
+    #
+    # @param path [String, Pathname]
+    # @return [String]
+    def file_uri_from_path(path)
+      path = path.to_s if path.is_a?(Pathname)
+      path = path.tr('\\', '/') if windows?
+      path = Sass::Util.escape_uri(path)
+      return path.start_with?('/') ? "file://" + path : path unless windows?
+      return "file:///" + path.tr("\\", "/") if path =~ /^[a-zA-Z]:[\/\\]/
+      return "file:" + path.tr("\\", "/") if path =~ /\\\\[^\\]+\\[^\\\/]+/
+      path.tr("\\", "/")
+    end
+
+    # Retries a filesystem operation if it fails on Windows. Windows
+    # has weird and flaky locking rules that can cause operations to fail.
+    #
+    # @yield [] The filesystem operation.
+    def retry_on_windows
+      return yield unless windows?
+
+      begin
+        yield
+      rescue SystemCallError
+        sleep 0.1
+        yield
       end
     end
 
@@ -581,7 +766,7 @@ module Sass
     # @return [Boolean]
     def ruby1?
       return @ruby1 if defined?(@ruby1)
-      @ruby1 = Sass::Util::RUBY_VERSION[0] <= 1
+      @ruby1 = RUBY_VERSION_COMPONENTS[0] <= 1
     end
 
     # Whether or not this is running under Ruby 1.8 or lower.
@@ -595,16 +780,15 @@ module Sass
       # We have to fall back to 1.8 behavior.
       return @ruby1_8 if defined?(@ruby1_8)
       @ruby1_8 = ironruby? ||
-                   (Sass::Util::RUBY_VERSION[0] == 1 && Sass::Util::RUBY_VERSION[1] < 9)
+                   (RUBY_VERSION_COMPONENTS[0] == 1 && RUBY_VERSION_COMPONENTS[1] < 9)
     end
 
-    # Whether or not this is running under Ruby 1.8.6 or lower.
-    # Note that lower versions are not officially supported.
+    # Whether or not this is running under Ruby 1.9.2 exactly.
     #
     # @return [Boolean]
-    def ruby1_8_6?
-      return @ruby1_8_6 if defined?(@ruby1_8_6)
-      @ruby1_8_6 = ruby1_8? && Sass::Util::RUBY_VERSION[2] < 7
+    def ruby1_9_2?
+      return @ruby1_9_2 if defined?(@ruby1_9_2)
+      @ruby1_9_2 = RUBY_VERSION_COMPONENTS == [1, 9, 2]
     end
 
     # Wehter or not this is running under JRuby 1.6 or lower.
@@ -648,118 +832,79 @@ module Sass
       end
 
       return Hash[pairs_or_hash] unless ruby1_8?
-      (pairs_or_hash.is_a?(NormalizedMap) ? NormalizedMap : OrderedHash)[*flatten(pairs_or_hash, 1)]
+      (pairs_or_hash.is_a?(NormalizedMap) ? NormalizedMap : OrderedHash)[*pairs_or_hash.flatten(1)]
     end
 
-
-    # Checks that the encoding of a string is valid in Ruby 1.9
-    # and cleans up potential encoding gotchas like the UTF-8 BOM.
-    # If it's not, yields an error string describing the invalid character
-    # and the line on which it occurrs.
-    #
-    # @param str [String] The string of which to check the encoding
-    # @yield [msg] A block in which an encoding error can be raised.
-    #   Only yields if there is an encoding error
-    # @yieldparam msg [String] The error message to be raised
-    # @return [String] `str`, potentially with encoding gotchas like BOMs removed
-    def check_encoding(str)
-      if ruby1_8?
-        return str.gsub(/\A\xEF\xBB\xBF/, '') # Get rid of the UTF-8 BOM
-      elsif str.valid_encoding?
-        # Get rid of the Unicode BOM if possible
-        if str.encoding.name =~ /^UTF-(8|16|32)(BE|LE)?$/
-          return str.gsub(Regexp.new("\\A\uFEFF".encode(str.encoding.name)), '')
-        else
-          return str
-        end
-      end
-
-      encoding = str.encoding
-      newlines = Regexp.new("\r\n|\r|\n".encode(encoding).force_encoding("binary"))
-      str.force_encoding("binary").split(newlines).each_with_index do |line, i|
-        begin
-          line.encode(encoding)
-        rescue Encoding::UndefinedConversionError => e
-          yield <<MSG.rstrip, i + 1
-Invalid #{encoding.name} character #{undefined_conversion_error_char(e)}
-MSG
-        end
-      end
-      str
+    unless ruby1_8?
+      CHARSET_REGEXP = /\A@charset "([^"]+)"/
+      UTF_8_BOM = "\xEF\xBB\xBF".force_encoding('BINARY')
+      UTF_16BE_BOM = "\xFE\xFF".force_encoding('BINARY')
+      UTF_16LE_BOM = "\xFF\xFE".force_encoding('BINARY')
     end
 
     # Like {\#check\_encoding}, but also checks for a `@charset` declaration
     # at the beginning of the file and uses that encoding if it exists.
     #
-    # The Sass encoding rules are simple.
-    # If a `@charset` declaration exists,
-    # we assume that that's the original encoding of the document.
-    # Otherwise, we use whatever encoding Ruby has.
-    # Then we convert that to UTF-8 to process internally.
-    # The UTF-8 end result is what's returned by this method.
+    # Sass follows CSS's decoding rules.
     #
     # @param str [String] The string of which to check the encoding
-    # @yield [msg] A block in which an encoding error can be raised.
-    #   Only yields if there is an encoding error
-    # @yieldparam msg [String] The error message to be raised
     # @return [(String, Encoding)] The original string encoded as UTF-8,
     #   and the source encoding of the string (or `nil` under Ruby 1.8)
     # @raise [Encoding::UndefinedConversionError] if the source encoding
     #   cannot be converted to UTF-8
     # @raise [ArgumentError] if the document uses an unknown encoding with `@charset`
-    def check_sass_encoding(str, &block)
-      return check_encoding(str, &block), nil if ruby1_8?
-      # We allow any printable ASCII characters but double quotes in the charset decl
-      bin = str.dup.force_encoding("BINARY")
-      encoding = Sass::Util::ENCODINGS_TO_CHECK.find do |enc|
-        re = Sass::Util::CHARSET_REGEXPS[enc]
-        re && bin =~ re
+    # @raise [Sass::SyntaxError] If the document declares an encoding that
+    #   doesn't match its contents, or it doesn't declare an encoding and its
+    #   contents are invalid in the native encoding.
+    def check_sass_encoding(str)
+      # On Ruby 1.8 we can't do anything complicated with encodings.
+      # Instead, we just strip out a UTF-8 BOM if it exists and
+      # sanitize according to Section 3.3 of CSS Syntax Level 3. We
+      # don't sanitize null characters since they might be components
+      # of other characters.
+      if ruby1_8?
+        return str.gsub(/\A\xEF\xBB\xBF/, '').gsub(/\r\n?|\f/, "\n"), nil
       end
-      charset, bom = $1, $2
-      if charset
-        charset = charset.force_encoding(encoding).encode("UTF-8")
-        if (endianness = encoding[/[BL]E$/])
-          begin
-            Encoding.find(charset + endianness)
-            charset << endianness
-          rescue ArgumentError # Encoding charset + endianness doesn't exist
+
+      # Determine the fallback encoding following section 3.2 of CSS Syntax Level 3 and Encodings:
+      # http://www.w3.org/TR/2013/WD-css-syntax-3-20130919/#determine-the-fallback-encoding
+      # http://encoding.spec.whatwg.org/#decode
+      binary = str.dup.force_encoding("BINARY")
+      if binary.start_with?(UTF_8_BOM)
+        binary.slice! 0, UTF_8_BOM.length
+        str = binary.force_encoding('UTF-8')
+      elsif binary.start_with?(UTF_16BE_BOM)
+        binary.slice! 0, UTF_16BE_BOM.length
+        str = binary.force_encoding('UTF-16BE')
+      elsif binary.start_with?(UTF_16LE_BOM)
+        binary.slice! 0, UTF_16LE_BOM.length
+        str = binary.force_encoding('UTF-16LE')
+      elsif binary =~ CHARSET_REGEXP
+        charset = $1.force_encoding('US-ASCII')
+        # Ruby 1.9.2 doesn't recognize a UTF-16 encoding without an endian marker.
+        if ruby1_9_2? && charset.downcase == 'utf-16'
+          encoding = Encoding.find('UTF-8')
+        else
+          encoding = Encoding.find(charset)
+          if encoding.name == 'UTF-16' || encoding.name == 'UTF-16BE'
+            encoding = Encoding.find('UTF-8')
           end
         end
-        str.force_encoding(charset)
-      elsif bom
-        str.force_encoding(encoding)
+        str = binary.force_encoding(encoding)
+      elsif str.encoding.name == "ASCII-8BIT"
+        # Normally we want to fall back on believing the Ruby string
+        # encoding, but if that's just binary we want to make sure
+        # it's valid UTF-8.
+        str = str.force_encoding('utf-8')
       end
 
-      str = check_encoding(str, &block)
-      return str.encode("UTF-8"), str.encoding
-    end
+      find_encoding_error(str) unless str.valid_encoding?
 
-    unless ruby1_8?
-      # @private
-      def _enc(string, encoding)
-        string.encode(encoding).force_encoding("BINARY")
-      end
-
-      # We could automatically add in any non-ASCII-compatible encodings here,
-      # but there's not really a good way to do that
-      # without manually checking that each encoding
-      # encodes all ASCII characters properly,
-      # which takes long enough to affect the startup time of the CLI.
-      ENCODINGS_TO_CHECK = %w[UTF-8 UTF-16BE UTF-16LE UTF-32BE UTF-32LE]
-
-      CHARSET_REGEXPS = Hash.new do |h, e|
-        h[e] =
-          begin
-            # /\A(?:\uFEFF)?@charset "(.*?)"|\A(\uFEFF)/
-            Regexp.new(/\A(?:#{_enc("\uFEFF", e)})?#{
-              _enc('@charset "', e)}(.*?)#{_enc('"', e)}|\A(#{
-              _enc("\uFEFF", e)})/)
-          rescue Encoding::ConverterNotFoundError => _
-            nil # JRuby on Java 5 doesn't support UTF-32
-          rescue
-            # /\A@charset "(.*?)"/
-            Regexp.new(/\A#{_enc('@charset "', e)}(.*?)#{_enc('"', e)}/)
-          end
+      begin
+        # If the string is valid, preprocess it according to section 3.3 of CSS Syntax Level 3.
+        return str.encode("UTF-8").gsub(/\r\n?|\f/, "\n").tr("\u0000", "�"), str.encoding
+      rescue EncodingError
+        find_encoding_error(str)
       end
     end
 
@@ -833,36 +978,22 @@ MSG
       ruby1_8? ? c[0] : c.ord
     end
 
-    # Flattens the first `n` nested arrays in a cross-version manner.
+    # Flattens the first level of nested arrays in `arrs`. Unlike
+    # `Array#flatten`, this orders the result by taking the first
+    # values from each array in order, then the second, and so on.
     #
-    # @param arr [Array] The array to flatten
-    # @param n [Fixnum] The number of levels to flatten
-    # @return [Array] The flattened array
-    def flatten(arr, n)
-      return arr.flatten(n) unless ruby1_8_6?
-      return arr if n == 0
-      arr.inject([]) {|res, e| e.is_a?(Array) ? res.concat(flatten(e, n - 1)) : res << e}
-    end
-
-    # Returns the hash code for a set in a cross-version manner.
-    # Aggravatingly, this is order-dependent in Ruby 1.8.6.
-    #
-    # @param set [Set]
-    # @return [Fixnum] The order-independent hashcode of `set`
-    def set_hash(set)
-      return set.hash unless ruby1_8_6?
-      set.map {|e| e.hash}.uniq.sort.hash
-    end
-
-    # Tests the hash-equality of two sets in a cross-version manner.
-    # Aggravatingly, this is order-dependent in Ruby 1.8.6.
-    #
-    # @param set1 [Set]
-    # @param set2 [Set]
-    # @return [Boolean] Whether or not the sets are hashcode equal
-    def set_eql?(set1, set2)
-      return set1.eql?(set2) unless ruby1_8_6?
-      set1.to_a.uniq.sort_by {|e| e.hash}.eql?(set2.to_a.uniq.sort_by {|e| e.hash})
+    # @param arrs [Array] The array to flatten.
+    # @return [Array] The flattened array.
+    def flatten_vertically(arrs)
+      result = []
+      arrs = arrs.map {|sub| sub.is_a?(Array) ? sub.dup : Array(sub)}
+      until arrs.empty?
+        arrs.reject! do |arr|
+          result << arr.shift
+          arr.empty?
+        end
+      end
+      result
     end
 
     # Like `Object#inspect`, but preserves non-ASCII characters rather than
@@ -873,7 +1004,7 @@ MSG
     # @param obj {Object}
     # @return {String}
     def inspect_obj(obj)
-      return obj.inspect unless version_geq(::RUBY_VERSION, "1.9.2")
+      return obj.inspect unless version_geq(RUBY_VERSION, "1.9.2")
       return ':' + inspect_obj(obj.to_s) if obj.is_a?(Symbol)
       return obj.inspect unless obj.is_a?(String)
       '"' + obj.gsub(/[\x00-\x7F]+/) {|s| s.inspect[1...-1]} + '"'
@@ -1040,6 +1171,20 @@ MSG
       URI_ESCAPE.escape string
     end
 
+    # A cross-platform implementation of `File.absolute_path`.
+    #
+    # @param path [String]
+    # @param dir_string [String] The directory to consider [path] relative to.
+    # @return [String] The absolute version of `path`.
+    def absolute_path(path, dir_string = nil)
+      # Ruby 1.8 doesn't support File.absolute_path.
+      return File.absolute_path(path, dir_string) unless ruby1_8?
+
+      # File.expand_path expands "~", which we don't want.
+      return File.expand_path(path, dir_string) unless path[0] == ?~
+      File.expand_path(File.join(".", path), dir_string)
+    end
+
     ## Static Method Stuff
 
     # The context in which the ERB for \{#def\_static\_method} will be run.
@@ -1068,15 +1213,25 @@ MSG
     # rename operation.
     #
     # @param filename [String] The file to write to.
+    # @param perms [Integer] The permissions used for creating this file.
+    #   Will be masked by the process umask. Defaults to readable/writeable
+    #   by all users however the umask usually changes this to only be writable
+    #   by the process's user.
     # @yieldparam tmpfile [Tempfile] The temp file that can be written to.
     # @return The value returned by the block.
-    def atomic_create_and_write_file(filename)
+    def atomic_create_and_write_file(filename, perms = 0666)
       require 'tempfile'
       tmpfile = Tempfile.new(File.basename(filename), File.dirname(filename))
       tmpfile.binmode if tmpfile.respond_to?(:binmode)
       result = yield tmpfile
       tmpfile.close
       ATOMIC_WRITE_MUTEX.synchronize do
+        begin
+          File.chmod(perms & ~File.umask, tmpfile.path)
+        rescue Errno::EPERM
+          # If we don't have permissions to chmod the file, don't let that crash
+          # the compilation. See issue 1215.
+        end
         File.rename tmpfile.path, filename
       end
       result
@@ -1087,10 +1242,68 @@ MSG
       tmpfile.unlink if tmpfile
     end
 
+    def load_listen!
+      if defined?(gem)
+        begin
+          gem 'listen', '>= 1.1.0', '< 3.0.0'
+          require 'listen'
+        rescue Gem::LoadError
+          dir = scope("vendor/listen/lib")
+          $LOAD_PATH.unshift dir
+          begin
+            require 'listen'
+          rescue LoadError => e
+            if version_geq(RUBY_VERSION, "1.9.3")
+              version_constraint = "~> 3.0"
+            else
+              version_constraint = "~> 1.1"
+            end
+            e.message << "\n" <<
+              "Run \"gem install listen --version '#{version_constraint}'\" to get it."
+            raise e
+          end
+        end
+      else
+        begin
+          require 'listen'
+        rescue LoadError => e
+          dir = scope("vendor/listen/lib")
+          if $LOAD_PATH.include?(dir)
+            raise e unless File.exist?(scope(".git"))
+            e.message << "\n" <<
+              'Run "git submodule update --init" to get the bundled version.'
+          else
+            $LOAD_PATH.unshift dir
+            retry
+          end
+        end
+      end
+    end
+
     private
 
-    # rubocop:disable LineLength
+    def find_encoding_error(str)
+      encoding = str.encoding
+      cr = Regexp.quote("\r".encode(encoding).force_encoding('BINARY'))
+      lf = Regexp.quote("\n".encode(encoding).force_encoding('BINARY'))
+      ff = Regexp.quote("\f".encode(encoding).force_encoding('BINARY'))
+      line_break = /#{cr}#{lf}?|#{ff}|#{lf}/
 
+      str.force_encoding("binary").split(line_break).each_with_index do |line, i|
+        begin
+          line.encode(encoding)
+        rescue Encoding::UndefinedConversionError => e
+          raise Sass::SyntaxError.new(
+            "Invalid #{encoding.name} character #{undefined_conversion_error_char(e)}",
+            :line => i + 1)
+        end
+      end
+
+      # We shouldn't get here, but it's possible some weird encoding stuff causes it.
+      return str, str.encoding
+    end
+
+    # rubocop:disable LineLength
 
     # Calculates the memoization table for the Least Common Subsequence algorithm.
     # Algorithm from [Wikipedia](http://en.wikipedia.org/wiki/Longest_common_subsequence_problem#Computing_the_length_of_the_LCS)
@@ -1112,9 +1325,7 @@ MSG
       end
       c
     end
-
     # rubocop:disable ParameterLists, LineLength
-
 
     # Computes a single longest common subsequence for arrays x and y.
     # Algorithm from [Wikipedia](http://en.wikipedia.org/wiki/Longest_common_subsequence_problem#Reading_out_an_LCS)
@@ -1129,9 +1340,10 @@ MSG
       lcs_backtrace(c, x, y, i - 1, j, &block)
     end
 
-    (Sass::Util.methods - Module.methods).each {|method| module_function method}
+    singleton_methods.each {|method| module_function method}
   end
 end
 
 require 'sass/util/multibyte_string_scanner'
 require 'sass/util/normalized_map'
+require 'sass/util/cross_platform_random'

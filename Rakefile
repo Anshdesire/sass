@@ -1,3 +1,5 @@
+require 'rubygems/package'
+
 # ----- Utility Functions -----
 
 def scope(path)
@@ -21,7 +23,7 @@ end
 
 # ----- Code Style Enforcement -----
 
-if RUBY_VERSION !~ /^(1\.8|2\.1)/ && (ENV.has_key?("RUBOCOP") && ENV["RUBOCOP"] == "true" || !(ENV.has_key?("RUBOCOP") || ENV.has_key?("TEST")))
+if RUBY_VERSION !~ /^(1\.8)/ && (ENV.has_key?("RUBOCOP") && ENV["RUBOCOP"] == "true" || !(ENV.has_key?("RUBOCOP") || ENV.has_key?("TEST")))
   require 'rubocop/rake_task'
   Rubocop::RakeTask.new do |t|
     t.patterns = FileList["lib/**/*"]
@@ -47,7 +49,7 @@ task :package => [:revision_file, :date_file, :submodules, :permissions] do
   version = get_version
   File.open(scope('VERSION'), 'w') {|f| f.puts(version)}
   load scope('sass.gemspec')
-  Gem::Builder.new(SASS_GEMSPEC).build
+  Gem::Package.build(SASS_GEMSPEC)
   sh %{git checkout VERSION}
 
   pkg = "#{SASS_GEMSPEC.name}-#{SASS_GEMSPEC.version}"
@@ -100,12 +102,10 @@ task :install => [:package] do
   sh %{#{'sudo ' if ENV["SUDO"]}#{gem} install --no-ri pkg/sass-#{get_version}}
 end
 
-desc "Release a new Sass package to Rubyforge."
+desc "Release a new Sass package to RubyGems.org."
 task :release => [:check_release, :package] do
   name = File.read(scope("VERSION_NAME")).strip
   version = File.read(scope("VERSION")).strip
-  sh %{rubyforge add_release sass sass "#{name} (v#{version})" pkg/sass-#{version}.gem}
-  sh %{rubyforge add_file    sass sass "#{name} (v#{version})" pkg/sass-#{version}.tar.gz}
   sh %{gem push pkg/sass-#{version}.gem}
 end
 
@@ -164,7 +164,6 @@ task :release_edge do
       next
     end
 
-    sh %{rubyforge add_release sass sass "Bleeding Edge (v#{version})" pkg/sass-#{version}.gem}
     sh %{gem push pkg/sass-#{version}.gem}
   end
 end

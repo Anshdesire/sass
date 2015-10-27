@@ -30,6 +30,8 @@ require 'sass/tree/warn_node'
 require 'sass/tree/import_node'
 require 'sass/tree/charset_node'
 require 'sass/tree/at_root_node'
+require 'sass/tree/keyframe_rule_node'
+require 'sass/tree/error_node'
 require 'sass/tree/visitors/base'
 require 'sass/tree/visitors/perform'
 require 'sass/tree/visitors/cssize'
@@ -51,7 +53,6 @@ require 'sass/media'
 require 'sass/supports'
 
 module Sass
-
   # A Sass mixin or function.
   #
   # `name`: `String`
@@ -83,7 +84,7 @@ module Sass
   # This class handles the parsing and compilation of the Sass template.
   # Example usage:
   #
-  #     template = File.load('stylesheets/sassy.sass')
+  #     template = File.read('stylesheets/sassy.sass')
   #     sass_engine = Sass::Engine.new(template)
   #     output = sass_engine.render
   #     puts output
@@ -156,7 +157,7 @@ module Sass
     # @api public
     DEFAULT_OPTIONS = {
       :style => :nested,
-      :load_paths => ['.'],
+      :load_paths => [],
       :cache => true,
       :cache_location => './.sass-cache',
       :syntax => :sass,
@@ -207,6 +208,8 @@ module Sass
       when :alternate; options[:property_syntax] = :new
       when :normal; options[:property_syntax] = :old
       end
+      options[:sourcemap] = :auto if options[:sourcemap] == true
+      options[:sourcemap] = :none if options[:sourcemap] == false
 
       options
     end
@@ -272,8 +275,8 @@ module Sass
     #   cannot be converted to UTF-8
     # @raise [ArgumentError] if the document uses an unknown encoding with `@charset`
     def render
-      return encode_and_set_charset(_to_tree.render) unless @options[:quiet]
-      Sass::Util.silence_sass_warnings {encode_and_set_charset(_to_tree.render)}
+      return _to_tree.render unless @options[:quiet]
+      Sass::Util.silence_sass_warnings {_to_tree.render}
     end
 
     # Render the template to CSS and return the source map.
@@ -316,7 +319,7 @@ module Sass
     # @raise [ArgumentError] if the document uses an unknown encoding with `@charset`
     def source_encoding
       check_encoding!
-      @original_encoding
+      @source_encoding
     end
 
     # Gets a set of all the documents
@@ -346,16 +349,27 @@ module Sass
     private
 
     def _render_with_sourcemap(sourcemap_uri)
-      if @options[:filename].nil?
+      filename = @options[:filename]
+      importer = @options[:importer]
+      sourcemap_dir = @options[:sourcemap_filename] &&
+        File.dirname(File.expand_path(@options[:sourcemap_filename]))
+      if filename.nil?
         raise Sass::SyntaxError.new(<<ERR)
 Error generating source map: couldn't determine public URL for the source stylesheet.
   No filename is available so there's nothing for the source map to link to.
 ERR
-      elsif @options[:importer].nil? ||
-        !(@options[:importer].public_url(@options[:filename]) ||
-          @options[:importer].is_a?(Sass::Importers::Filesystem))
+      elsif importer.nil?
         raise Sass::SyntaxError.new(<<ERR)
-Error generating source map: couldn't determine public URL for "#{@options[:filename]}".
+Error generating source map: couldn't determine public URL for "#{filename}".
+  Without a public URL, there's nothing for the source map to link to.
+  An importer was not set for this file.
+ERR
+      elsif Sass::Util.silence_warnings do
+              sourcemap_dir = nil if @options[:sourcemap] == :file
+              importer.public_url(filename, sourcemap_dir).nil?
+            end
+        raise Sass::SyntaxError.new(<<ERR)
+Error generating source map: couldn't determine public URL for "#{filename}".
   Without a public URL, there's nothing for the source map to link to.
   Custom importers should define the #public_url method.
 ERR
@@ -367,24 +381,13 @@ ERR
       rendered << "\n" unless compressed
       rendered << "/*# sourceMappingURL="
       rendered << Sass::Util.escape_uri(sourcemap_uri)
-      rendered << " */"
-      rendered = encode_and_set_charset(rendered)
+      rendered << " */\n"
       return rendered, sourcemap
     end
 
-    def encode_and_set_charset(rendered)
-      return rendered if Sass::Util.ruby1_8?
-      begin
-        # Try to convert the result to the original encoding,
-        # but if that doesn't work fall back on UTF-8
-        rendered = rendered.encode(source_encoding)
-      rescue EncodingError
-      end
-      rendered.gsub(Regexp.new('\A@charset "(.*?)"'.encode(source_encoding)),
-        "@charset \"#{source_encoding.name}\"".encode(source_encoding))
-    end
-
     def _to_tree
+      check_encoding!
+
       if (@options[:cache] || @options[:read_cache]) &&
           @options[:filename] && @options[:importer]
         key = sassc_key
@@ -395,8 +398,6 @@ ERR
           return root
         end
       end
-
-      check_encoding!
 
       if @options[:syntax] == :scss
         root = Sass::SCSS::Parser.new(@template, @options[:filename], @options[:importer]).parse
@@ -429,9 +430,7 @@ ERR
     def check_encoding!
       return if @checked_encoding
       @checked_encoding = true
-      @template, @original_encoding = Sass::Util.check_sass_encoding(@template) do |msg, line|
-        raise Sass::SyntaxError.new(msg, :line => line)
-      end
+      @template, @source_encoding = Sass::Util.check_sass_encoding(@template)
     end
 
     def tabulate(string)
@@ -439,7 +438,7 @@ ERR
       comment_tab_str = nil
       first = true
       lines = []
-      string.gsub(/\r\n|\r|\n/, "\n").scan(/^[^\n]*?$/).each_with_index do |line, index|
+      string.scan(/^[^\n]*?$/).each_with_index do |line, index|
         index += (@options[:line] || 1)
         if line.strip.empty?
           lines.last.text << "\n" if lines.last && lines.last.comment?
@@ -575,6 +574,8 @@ MSG
           if continued_comment &&
               child.line == continued_comment.line +
               continued_comment.lines + 1
+            continued_comment.value.last.sub!(/ \*\/\Z/, '')
+            child.value.first.gsub!(/\A\/\*/, ' *')
             continued_comment.value += ["\n"] + child.value
             next
           end
@@ -783,12 +784,13 @@ WARNING
 
     DIRECTIVES = Set[:mixin, :include, :function, :return, :debug, :warn, :for,
       :each, :while, :if, :else, :extend, :import, :media, :charset, :content,
-      :at_root]
+      :at_root, :error]
 
     # @comment
     #   rubocop:disable MethodLength
     def parse_directive(parent, line, root)
       directive, whitespace, value = line.text[1..-1].split(/(\s+)/, 2)
+      raise SyntaxError.new("Invalid directive: '@'.") unless directive
       offset = directive.size + whitespace.size + 1 if whitespace
 
       directive_name = directive.gsub('-', '_').to_sym
@@ -822,6 +824,14 @@ WARNING
         :line => @line + 1) unless line.children.empty?
       offset = line.offset + line.text.index(value).to_i
       Tree::DebugNode.new(parse_script(value, :offset => offset))
+    end
+
+    def parse_error_directive(parent, line, root, value, offset)
+      raise SyntaxError.new("Invalid error directive '@error': expected expression.") unless value
+      raise SyntaxError.new("Illegal nesting: Nothing may be nested beneath error directives.",
+        :line => @line + 1) unless line.children.empty?
+      offset = line.offset + line.text.index(value).to_i
+      Tree::ErrorNode.new(parse_script(value, :offset => offset))
     end
 
     def parse_extend_directive(parent, line, root, value, offset)
@@ -999,15 +1009,16 @@ WARNING
         script_parser = Sass::Script::Parser.new(scanner, @line, to_parser_offset(offset), @options)
         str = script_parser.parse_string
 
-        media_parser = Sass::SCSS::Parser.new(scanner,
-          @options[:filename], @options[:importer],
-          @line, str.source_range.end_pos.offset)
-        if (media = media_parser.parse_media_query_list)
-          end_pos = Sass::Source::Position.new(@line, media_parser.offset + 1)
-          node = Tree::CssImportNode.new(str, media.to_a)
-        else
+        if scanner.eos?
           end_pos = str.source_range.end_pos
           node = Tree::CssImportNode.new(str)
+        else
+          media_parser = Sass::SCSS::Parser.new(scanner,
+            @options[:filename], @options[:importer],
+            @line, str.source_range.end_pos.offset)
+          media = media_parser.parse_media_query_list
+          end_pos = Sass::Source::Position.new(@line, media_parser.offset + 1)
+          node = Tree::CssImportNode.new(str, media.to_a)
         end
 
         node.source_range = Sass::Source::Range.new(
@@ -1016,7 +1027,7 @@ WARNING
         return node
       end
 
-      unless (str = scanner.scan(Sass::SCSS::RX::STRING))
+      unless (quoted_val = scanner.scan(Sass::SCSS::RX::STRING))
         scanned = scanner.scan(/[^,;]+/)
         node = Tree::ImportNode.new(scanned)
         start_parser_offset = to_parser_offset(offset)
@@ -1028,21 +1039,21 @@ WARNING
       end
 
       start_offset = offset
-      offset += str.length
-      val = scanner[1] || scanner[2]
+      offset += scanner.matched.length
+      val = Sass::Script::Value::String.value(scanner[1] || scanner[2])
       scanned = scanner.scan(/\s*/)
       if !scanner.match?(/[,;]|$/)
         offset += scanned.length if scanned
         media_parser = Sass::SCSS::Parser.new(scanner,
           @options[:filename], @options[:importer], @line, offset)
         media = media_parser.parse_media_query_list
-        node = Tree::CssImportNode.new(str || uri, media.to_a)
+        node = Tree::CssImportNode.new(quoted_val, media.to_a)
         node.source_range = Sass::Source::Range.new(
           Sass::Source::Position.new(@line, to_parser_offset(start_offset)),
           Sass::Source::Position.new(@line, media_parser.offset),
           @options[:filename], @options[:importer])
       elsif val =~ %r{^(https?:)?//}
-        node = Tree::CssImportNode.new("url(#{val})")
+        node = Tree::CssImportNode.new(quoted_val)
         node.source_range = Sass::Source::Range.new(
           Sass::Source::Position.new(@line, to_parser_offset(start_offset)),
           Sass::Source::Position.new(@line, to_parser_offset(offset)),
@@ -1127,12 +1138,13 @@ WARNING
         content.shift
       end
 
-      return silent ? "//" : "/* */" if content.empty?
+      return "/* */" if content.empty?
       content.last.gsub!(/ ?\*\/ *$/, '')
+      first = content.shift unless removed_first
       content.map! {|l| l.gsub!(/^\*( ?)/, '\1') || (l.empty? ? "" : " ") + l}
-      content.first.gsub!(/^ /, '') unless removed_first
+      content.unshift first unless removed_first
       if silent
-        "//" + content.join("\n//")
+        "/*" + content.join("\n *") + " */"
       else
         # The #gsub fixes the case of a trailing */
         "/*" + content.join("\n *").gsub(/ \*\Z/, '') + " */"

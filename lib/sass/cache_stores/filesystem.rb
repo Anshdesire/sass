@@ -17,12 +17,16 @@ module Sass
       # @see Base#\_retrieve
       def _retrieve(key, version, sha)
         return unless File.readable?(path_to(key))
-        File.open(path_to(key), "rb") do |f|
-          if f.readline("\n").strip == version && f.readline("\n").strip == sha
-            return f.read
+        begin
+          File.open(path_to(key), "rb") do |f|
+            if f.readline("\n").strip == version && f.readline("\n").strip == sha
+              return f.read
+            end
           end
+          File.unlink path_to(key)
+        rescue Errno::ENOENT
+          # Already deleted. Race condition?
         end
-        File.unlink path_to(key)
         nil
       rescue EOFError, TypeError, ArgumentError => e
         Sass::Util.sass_warn "Warning. Error encountered while reading cache #{path_to(key)}: #{e}"
@@ -32,7 +36,7 @@ module Sass
       def _store(key, version, sha, contents)
         compiled_filename = path_to(key)
         FileUtils.mkdir_p(File.dirname(compiled_filename))
-        Sass::Util.atomic_create_and_write_file(compiled_filename) do |f|
+        Sass::Util.atomic_create_and_write_file(compiled_filename, 0600) do |f|
           f.puts(version)
           f.puts(sha)
           f.write(contents)

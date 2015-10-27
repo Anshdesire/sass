@@ -1,14 +1,15 @@
 #!/usr/bin/env ruby
-require 'test/unit'
+require 'minitest/autorun'
 require File.dirname(__FILE__) + '/../test_helper'
 require 'sass/plugin'
 require 'sass/plugin/compiler'
 
-class CompilerTest < Test::Unit::TestCase
+class CompilerTest < MiniTest::Test
   class FakeListener
     attr_accessor :options
     attr_accessor :directories
     attr_reader :start_called
+    attr_reader :thread
 
     def initialize(*args, &on_filesystem_event)
       self.options = args.last.is_a?(Hash) ? args.pop : {}
@@ -17,7 +18,7 @@ class CompilerTest < Test::Unit::TestCase
       @start_called = false
       reset_events!
     end
-    
+
     def fire_events!(*args)
       @on_filesystem_event.call(@modified, @added, @removed)
       reset_events!
@@ -39,8 +40,21 @@ class CompilerTest < Test::Unit::TestCase
       @run_during_start = run_during_start
     end
 
+    # used for Listen < 2.0
     def start!
       @run_during_start.call(self) if @run_during_start
+    end
+
+    # used for Listen >= 2.0
+    def start
+      parent = Thread.current
+      @thread = Thread.new do
+        @run_during_start.call(self) if @run_during_start
+        parent.raise Interrupt
+      end
+    end
+
+    def stop
     end
 
     def reset_events!
@@ -72,9 +86,18 @@ class CompilerTest < Test::Unit::TestCase
 
     private
     def create_listener(*args, &on_filesystem_event)
-      @fake_listener = FakeListener.new(*args, &on_filesystem_event)
-      @fake_listener.on_start!(&run_during_start)
-      @fake_listener
+      if Sass::Util.listen_geq_2?
+        options = args.pop if args.last.is_a?(Hash)
+        args.map do |dir|
+          @fake_listener = FakeListener.new(*args, &on_filesystem_event)
+          @fake_listener.on_start!(&run_during_start)
+          @fake_listener
+        end
+      else
+        @fake_listener = FakeListener.new(*args, &on_filesystem_event)
+        @fake_listener.on_start!(&run_during_start)
+        @fake_listener
+      end
     end
   end
 
@@ -164,12 +187,12 @@ class CompilerTest < Test::Unit::TestCase
     directories = nil
     c = watcher do |listener|
       directories = listener.directories
-      listener.removed "/asdf/foobar/sass/foo.scss"
+      listener.removed File.expand_path("./foo.scss")
       listener.fire_events!
     end
-    c.watch([["/asdf/foobar/sass/foo.scss", "/asdf/foobar/css/foo.css", nil]])
-    assert directories.include?("/asdf/foobar/sass"), directories.inspect
-    assert_equal "/asdf/foobar/css/foo.css", c.deleted_css_files.first, "the corresponding css file was not deleted"
+    c.watch([[File.expand_path("./foo.scss"), File.expand_path("./foo.css"), nil]])
+    assert directories.include?(File.expand_path(".")), directories.inspect
+    assert_equal File.expand_path("./foo.css"), c.deleted_css_files.first, "the corresponding css file was not deleted"
     assert_equal [], c.update_stylesheets_called_with[1], "the sass file should not have been compiled"
   end
 

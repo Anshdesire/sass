@@ -58,11 +58,11 @@ module Sass::Supports
     end
 
     def to_css
-      "#{left_parens @left.to_css} #{op} #{right_parens @right.to_css}"
+      "#{parens @left, @left.to_css} #{op} #{parens @right, @right.to_css}"
     end
 
     def to_src(options)
-      "#{left_parens @left.to_src(options)} #{op} #{right_parens @right.to_src(options)}"
+      "#{parens @left, @left.to_src(options)} #{op} #{parens @right, @right.to_src(options)}"
     end
 
     def deep_copy
@@ -79,14 +79,12 @@ module Sass::Supports
 
     private
 
-    def left_parens(str)
-      return "(#{str})" if @left.is_a?(Negation)
-      str
-    end
-
-    def right_parens(str)
-      return "(#{str})" if @right.is_a?(Negation) || @right.is_a?(Operator)
-      str
+    def parens(condition, str)
+      if condition.is_a?(Negation) || (condition.is_a?(Operator) && condition.op != op)
+        return "(#{str})"
+      else
+        return str
+      end
     end
   end
 
@@ -203,8 +201,7 @@ module Sass::Supports
     end
 
     def perform(env)
-      val = value.perform(env)
-      @resolved_value = val.is_a?(Sass::Script::Value::String) ? val.value : val.to_s
+      @resolved_value = value.perform(env).to_s(:quote => :none)
     end
 
     def to_css
@@ -212,7 +209,7 @@ module Sass::Supports
     end
 
     def to_src(options)
-      "\#{#{@value.to_sass(options)}}"
+      @value.to_sass(options)
     end
 
     def deep_copy

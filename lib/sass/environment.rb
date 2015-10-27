@@ -41,7 +41,7 @@ module Sass
             if @#{name}s.include?(name)
               @#{name}s[name] = value
               true
-            elsif @parent
+            elsif @parent && !@parent.global?
               @parent.try_set_#{name}(name, value)
             else
               false
@@ -52,6 +52,10 @@ module Sass
           def set_local_#{name}(name, value)
             @#{name}s ||= {}
             @#{name}s[name.tr('_', '-')] = value
+          end
+
+          def set_global_#{name}(name, value)
+            global_env.set_#{name}(name, value)
           end
         RUBY
       end
@@ -85,6 +89,13 @@ module Sass
       @stack = Sass::Stack.new if @parent.nil?
     end
 
+    # Returns whether this is the global environment.
+    #
+    # @return [Boolean]
+    def global?
+      @parent.nil?
+    end
+
     # The environment of the caller of this environment's mixin or function.
     # @return {Environment?}
     def caller
@@ -113,7 +124,7 @@ module Sass
     #
     # @return [Environment]
     def global_env
-      @global_env ||= @parent.nil? ? self : @parent.global_env
+      @global_env ||= global? ? self : @parent.global_env
     end
 
     # The import/mixin stack.
@@ -175,6 +186,23 @@ module Sass
       return @content if @content
       env = super
       @content ||= env.is_a?(ReadOnlyEnvironment) ? env : ReadOnlyEnvironment.new(env, env.options)
+    end
+  end
+
+  # An environment that can write to in-scope global variables, but doesn't
+  # create new variables in the global scope. Useful for top-level control
+  # directives.
+  class SemiGlobalEnvironment < Environment
+    def try_set_var(name, value)
+      @vars ||= {}
+      if @vars.include?(name)
+        @vars[name] = value
+        true
+      elsif @parent
+        @parent.try_set_var(name, value)
+      else
+        false
+      end
     end
   end
 end

@@ -70,7 +70,8 @@ module Sass
       # @return [Boolean]
       def exclude_node?(node)
         return exclude?(node.name.gsub(/^@/, '')) if node.is_a?(Sass::Tree::DirectiveNode)
-        exclude?(node.class.to_s.gsub(/.*::(.*)Node$/, '\1').downcase)
+        return exclude?('keyframes') if node.is_a?(Sass::Tree::KeyframeRuleNode)
+        exclude?('rule') && node.is_a?(Sass::Tree::RuleNode)
       end
 
       # @see Node#bubbles?

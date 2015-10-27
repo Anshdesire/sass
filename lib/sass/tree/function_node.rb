@@ -20,6 +20,12 @@ module Sass
       # @return [Script::Tree::Node?]
       attr_accessor :splat
 
+      # Strips out any vendor prefixes.
+      # @return [String] The normalized name of the directive.
+      def normalized_name
+        @normalized_name ||= name.gsub(/^(?:-[a-zA-Z0-9]+-)?/, '\1')
+      end
+
       # @param name [String] The function name
       # @param args [Array<(Script::Tree::Node, Script::Tree::Node)>]
       #   The arguments for the function.
@@ -29,6 +35,10 @@ module Sass
         @args = args
         @splat = splat
         super()
+
+        if %w[and or not].include?(name)
+          raise Sass::SyntaxError.new("Invalid function name \"#{name}\".")
+        end
       end
     end
   end

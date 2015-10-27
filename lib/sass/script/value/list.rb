@@ -51,11 +51,8 @@ module Sass::Script::Value
     # @see Value#to_sass
     def to_sass(opts = {})
       return "()" if value.empty?
-      precedence = Sass::Script::Parser.precedence_of(separator)
       members = value.map do |v|
-        if v.is_a?(List) && Sass::Script::Parser.precedence_of(v.separator) <= precedence ||
-            separator == :space && v.is_a?(Sass::Script::Tree::UnaryOperation) &&
-            (v.operator == :minus || v.operator == :plus)
+        if element_needs_parens?(v)
           "(#{v.to_sass(opts)})"
         else
           v.to_sass(opts)
@@ -68,22 +65,7 @@ module Sass::Script::Value
     # @see Value#to_h
     def to_h
       return Sass::Util.ordered_hash if value.empty?
-      return @map ||= Sass::Util.to_hash(value.map {|e| e.to_a}) if is_pseudo_map?
       super
-    end
-
-    # Returns whether a warning still needs to be printed for this list being used as a map.
-    #
-    # @return [Boolean]
-    def needs_map_warning?
-      !@value.empty? && !@map
-    end
-
-    # Returns whether this is a list of pairs that can be used as a map.
-    #
-    # @return [Boolean]
-    def is_pseudo_map?
-      @is_pseudo_map ||= value.all? {|e| e.is_a?(Sass::Script::Value::List) && e.to_a.length == 2}
     end
 
     # @see Value#inspect
@@ -109,6 +91,18 @@ module Sass::Script::Value
     end
 
     private
+
+    def element_needs_parens?(element)
+      if element.is_a?(List)
+        return false if element.value.empty?
+        precedence = Sass::Script::Parser.precedence_of(separator)
+        return Sass::Script::Parser.precedence_of(element.separator) <= precedence
+      end
+
+      return false unless separator == :space
+      return false unless element.is_a?(Sass::Script::Tree::UnaryOperation)
+      element.operator == :minus || element.operator == :plus
+    end
 
     def sep_str(opts = options)
       return ' ' if separator == :space

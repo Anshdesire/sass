@@ -3,12 +3,12 @@
 require File.dirname(__FILE__) + '/../test_helper'
 require File.dirname(__FILE__) + '/test_helper'
 
-class SourcemapTest < Test::Unit::TestCase
+class SourcemapTest < MiniTest::Test
   def test_to_json_requires_args
     _, sourcemap = render_with_sourcemap('')
-    assert_raise(ArgumentError) {sourcemap.to_json({})}
-    assert_raise(ArgumentError) {sourcemap.to_json({:css_path => 'foo'})}
-    assert_raise(ArgumentError) {sourcemap.to_json({:sourcemap_path => 'foo'})}
+    assert_raises(ArgumentError) {sourcemap.to_json({})}
+    assert_raises(ArgumentError) {sourcemap.to_json({:css_path => 'foo'})}
+    assert_raises(ArgumentError) {sourcemap.to_json({:sourcemap_path => 'foo'})}
   end
 
   def test_simple_mapping_scss
@@ -30,6 +30,7 @@ CSS
 "version": 3,
 "mappings": "AAAA,CAAE;EACA,GAAG,EAAE,GAAG;;EAER,SAAS,EAAE,IAAI",
 "sources": ["test_simple_mapping_scss_inline.scss"],
+"names": [],
 "file": "test.css"
 }
 JSON
@@ -53,6 +54,33 @@ CSS
 "version": 3,
 "mappings": "AAAA,CAAC;EACC,GAAG,EAAE,GAAG;;EAEP,SAAS,EAAC,IAAI",
 "sources": ["test_simple_mapping_sass_inline.sass"],
+"names": [],
+"file": "test.css"
+}
+JSON
+  end
+
+  def test_simple_mapping_with_file_uris
+    uri = Sass::Util.file_uri_from_path(Sass::Util.absolute_path(filename_for_test(:scss)))
+    assert_parses_with_sourcemap <<SCSS, <<CSS, <<JSON, :sourcemap => :file
+a {
+  foo: bar;
+/* SOME COMMENT */
+  font-size: 12px;
+}
+SCSS
+a {
+  foo: bar;
+  /* SOME COMMENT */
+  font-size: 12px; }
+
+/*# sourceMappingURL=test.css.map */
+CSS
+{
+"version": 3,
+"mappings": "AAAA,CAAE;EACA,GAAG,EAAE,GAAG;;EAER,SAAS,EAAE,IAAI",
+"sources": ["#{uri}"],
+"names": [],
 "file": "test.css"
 }
 JSON
@@ -78,6 +106,7 @@ CSS
 "version": 3,
 "mappings": "AAAA,CAAE;EACA,GAAG,EAAE,GAAG;;EAER,SAAS,EAAE,IAAI",
 "sources": ["../scss/style.scss"],
+"names": [],
 "file": "style.css"
 }
 JSON
@@ -102,6 +131,7 @@ CSS
 "version": 3,
 "mappings": "AAAA,CAAC;EACC,GAAG,EAAE,GAAG;;EAEP,SAAS,EAAC,IAAI",
 "sources": ["../sass/style.sass"],
+"names": [],
 "file": "style.css"
 }
 JSON
@@ -124,6 +154,7 @@ CSS
 "version": 3,
 "mappings": ";AAAA,CAAE;EACA,GAAG,EAAE,GAAG",
 "sources": ["test_simple_charset_mapping_scss_inline.scss"],
+"names": [],
 "file": "test.css"
 }
 JSON
@@ -144,21 +175,22 @@ CSS
 "version": 3,
 "mappings": ";AAAA,CAAC;EACC,GAAG,EAAE,GAAG",
 "sources": ["test_simple_charset_mapping_sass_inline.sass"],
+"names": [],
 "file": "test.css"
 }
 JSON
     end
 
     def test_different_charset_than_encoding_scss
-      assert_parses_with_sourcemap(<<SCSS.force_encoding("IBM866"), <<CSS.force_encoding("IBM866"), <<JSON)
+      assert_parses_with_sourcemap(<<SCSS.force_encoding("IBM866"), <<CSS, <<JSON)
 @charset "IBM866";
 f\x86\x86 {
   \x86: b;
 }
 SCSS
-@charset "IBM866";
-f\x86\x86 {
-  \x86: b; }
+@charset "UTF-8";
+fЖЖ {
+  Ж: b; }
 
 /*# sourceMappingURL=test.css.map */
 CSS
@@ -166,20 +198,21 @@ CSS
 "version": 3,
 "mappings": ";AACA,GAAI;EACF,CAAC,EAAE,CAAC",
 "sources": ["test_different_charset_than_encoding_scss_inline.scss"],
+"names": [],
 "file": "test.css"
 }
 JSON
     end
 
     def test_different_charset_than_encoding_sass
-      assert_parses_with_sourcemap(<<SASS.force_encoding("IBM866"), <<CSS.force_encoding("IBM866"), <<JSON, :syntax => :sass)
+      assert_parses_with_sourcemap(<<SASS.force_encoding("IBM866"), <<CSS, <<JSON, :syntax => :sass)
 @charset "IBM866"
 f\x86\x86
   \x86: b
 SASS
-@charset "IBM866";
-f\x86\x86 {
-  \x86: b; }
+@charset "UTF-8";
+fЖЖ {
+  Ж: b; }
 
 /*# sourceMappingURL=test.css.map */
 CSS
@@ -187,6 +220,7 @@ CSS
 "version": 3,
 "mappings": ";AACA,GAAG;EACD,CAAC,EAAE,CAAC",
 "sources": ["test_different_charset_than_encoding_sass_inline.sass"],
+"names": [],
 "file": "test.css"
 }
 JSON
@@ -435,8 +469,8 @@ CSS
   {{7}}border-width{{/7}}: {{8}}3px{{/8}}
 SASS
 {{1}}.error, .seriousError{{/1}} {
-  {{2}}border{{/2}}: {{3}}1px red{{/3}};
-  {{4}}background-color{{/4}}: {{5}}#ffdddd{{/5}}; }
+  {{2}}border{{/2}}: {{3}}1px #f00{{/3}};
+  {{4}}background-color{{/4}}: {{5}}#fdd{{/5}}; }
 
 {{6}}.seriousError{{/6}} {
   {{7}}border-width{{/7}}: {{8}}3px{{/8}}; }
@@ -624,9 +658,9 @@ SCSS
   {{22}}border-style{{/22}}: {{23}}dashed{{/23}}; }
 
 {{24}}.shadows{{/24}} {
-  {{25}}-moz-box-shadow{{/25}}: {{26}}0px 4px 5px #666666, 2px 6px 10px #999999{{/26}};
-  {{27}}-webkit-box-shadow{{/27}}: {{28}}0px 4px 5px #666666, 2px 6px 10px #999999{{/28}};
-  {{29}}box-shadow{{/29}}: {{30}}0px 4px 5px #666666, 2px 6px 10px #999999{{/30}}; }
+  {{25}}-moz-box-shadow{{/25}}: {{26}}0px 4px 5px #666, 2px 6px 10px #999{{/26}};
+  {{27}}-webkit-box-shadow{{/27}}: {{28}}0px 4px 5px #666, 2px 6px 10px #999{{/28}};
+  {{29}}box-shadow{{/29}}: {{30}}0px 4px 5px #666, 2px 6px 10px #999{{/30}}; }
 
 /*# sourceMappingURL=test.css.map */
 CSS
@@ -667,7 +701,7 @@ SASS
 {{1}}.page-title{{/1}} {
   {{2}}font-size{{/2}}: {{3}}20px{{/3}};
   {{4}}font-weight{{/4}}: {{5}}bold{{/5}};
-  {{6}}color{{/6}}: {{7}}red{{/7}};
+  {{6}}color{{/6}}: {{7}}#ff0000{{/7}};
   {{8}}padding{{/8}}: {{9}}4px{{/9}}; }
 
 {{10}}p{{/10}} {
@@ -681,9 +715,9 @@ SASS
   {{22}}border-style{{/22}}: {{23}}dashed{{/23}}; }
 
 {{24}}.shadows{{/24}} {
-  {{25}}-moz-box-shadow{{/25}}: {{26}}0px 4px 5px #666666, 2px 6px 10px #999999{{/26}};
-  {{27}}-webkit-box-shadow{{/27}}: {{28}}0px 4px 5px #666666, 2px 6px 10px #999999{{/28}};
-  {{29}}box-shadow{{/29}}: {{30}}0px 4px 5px #666666, 2px 6px 10px #999999{{/30}}; }
+  {{25}}-moz-box-shadow{{/25}}: {{26}}0px 4px 5px #666, 2px 6px 10px #999{{/26}};
+  {{27}}-webkit-box-shadow{{/27}}: {{28}}0px 4px 5px #666, 2px 6px 10px #999{{/28}};
+  {{29}}box-shadow{{/29}}: {{30}}0px 4px 5px #666, 2px 6px 10px #999{{/30}}; }
 
 /*# sourceMappingURL=test.css.map */
 CSS
@@ -744,6 +778,74 @@ SASS
 CSS
   end
 
+  def test_multiline_script_scss
+    assert_parses_with_mapping <<SCSS, <<CSS, :syntax => :scss
+$var: {{3}}foo +
+    bar{{/3}}; {{1}}x {{/1}}{ {{2}}y{{/2}}: $var }
+SCSS
+{{1}}x{{/1}} {
+  {{2}}y{{/2}}: {{3}}foobar{{/3}}; }
+
+/*# sourceMappingURL=test.css.map */
+CSS
+  end
+
+  def test_multiline_interpolation_source_range
+    engine = Sass::Engine.new(<<-SCSS, :cache => false, :syntax => :scss)
+p {
+  filter: progid:DXImageTransform(
+          '\#{123}');
+}
+SCSS
+
+    interpolated = engine.to_tree.children.
+      first.children.
+      first.value.children[1]
+    assert_equal "123", interpolated.to_sass
+    range = interpolated.source_range
+    assert_equal 3, range.start_pos.line
+    assert_equal 14, range.start_pos.offset
+    assert_equal 3, range.end_pos.line
+    assert_equal 17, range.end_pos.offset
+  end
+
+  def test_list_source_range
+    engine = Sass::Engine.new(<<-SCSS, :cache => false, :syntax => :scss)
+@each $a, $b in (1, 2), (2, 4), (3, 6) { }
+SCSS
+    list = engine.to_tree.children.first.list
+    assert_equal 1, list.source_range.start_pos.line
+    assert_equal 1, list.source_range.end_pos.line
+    assert_equal 16, list.source_range.start_pos.offset
+    assert_equal 38, list.source_range.end_pos.offset
+  end
+
+  def test_sources_array_is_uri_escaped
+    map = Sass::Source::Map.new
+    importer = Sass::Importers::Filesystem.new('.')
+    map.add(
+      Sass::Source::Range.new(
+        Sass::Source::Position.new(0, 0),
+        Sass::Source::Position.new(0, 10),
+        'source file.scss',
+        importer),
+      Sass::Source::Range.new(
+        Sass::Source::Position.new(0, 0),
+        Sass::Source::Position.new(0, 10),
+        nil, nil))
+
+    json = map.to_json(:css_path => 'output file.css', :sourcemap_path => 'output file.css.map')
+    assert_equal json, <<JSON.rstrip
+{
+"version": 3,
+"mappings": "DADD,UAAU",
+"sources": ["source%20file.scss"],
+"names": [],
+"file": "output%20file.css"
+}
+JSON
+  end
+
   private
 
   ANNOTATION_REGEX = /\{\{(\/?)([^}]+)\}\}/
@@ -779,11 +881,12 @@ CSS
     source_ranges = build_ranges(source, source_file_name)
     target_ranges = build_ranges(css)
     map = Sass::Source::Map.new
-    Sass::Util.flatten(source_ranges.map do |(name, sources)|
+    source_ranges.map do |(name, sources)|
         assert(sources.length == 1, "#{sources.length} source ranges encountered for annotation #{name}")
         assert(target_ranges[name], "No target ranges for annotation #{name}")
         target_ranges[name].map {|target_range| [sources.first, target_range]}
-      end, 1).
+      end.
+      flatten(1).
       sort_by {|(_, target)| [target.start_pos.line, target.start_pos.offset]}.
       each {|(s2, target)| map.add(s2, target)}
     map
@@ -802,11 +905,18 @@ CSS
 
   def assert_positions_equal(expected, actual, lines, message = nil)
     prefix = message ? message + ": " : ""
+    expected_location = lines[expected.line - 1] + "\n" + ("-" * (expected.offset - 1)) + "^"
+    actual_location = lines[actual.line - 1] + "\n" + ("-" * (actual.offset - 1)) + "^"
     assert_equal(expected.line, actual.line, prefix +
-      "Expected #{expected.inspect} but was #{actual.inspect}")
+      "Expected #{expected.inspect}\n" +
+      expected_location + "\n\n" +
+      "But was #{actual.inspect}\n" +
+      actual_location)
     assert_equal(expected.offset, actual.offset, prefix +
-      "Expected #{expected.inspect} but was #{actual.inspect}\n" +
-      lines[actual.line - 1] + "\n" + ("-" * (actual.offset - 1)) + "^")
+      "Expected #{expected.inspect}\n" +
+      expected_location + "\n\n" +
+      "But was #{actual.inspect}\n" +
+      actual_location)
   end
 
   def assert_ranges_equal(expected, actual, lines, prefix)
@@ -835,7 +945,7 @@ MESSAGE
     rendered, sourcemap = render_with_sourcemap(source, options)
     css_path = options[:output] || "test.css"
     sourcemap_path = Sass::Util.sourcemap_name(css_path)
-    rendered_json = sourcemap.to_json(:css_path => css_path, :sourcemap_path => sourcemap_path)
+    rendered_json = sourcemap.to_json(:css_path => css_path, :sourcemap_path => sourcemap_path, :type => options[:sourcemap])
 
     assert_equal css.rstrip, rendered.rstrip
     assert_equal sourcemap_json.rstrip, rendered_json

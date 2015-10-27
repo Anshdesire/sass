@@ -1,5 +1,4 @@
 require 'delegate'
-require 'sass/util'
 
 module Sass
   module Util
@@ -9,9 +8,11 @@ module Sass
     require 'sass/util/ordered_hash' if ruby1_8?
     class NormalizedMap
       # Create a normalized map
-      def initialize
+      def initialize(map = nil)
         @key_strings = {}
         @map = Util.ruby1_8? ? OrderedHash.new : {}
+
+        map.each {|key, value| self[key] = value} if map
       end
 
       # Specifies how to transform the key.
@@ -19,6 +20,15 @@ module Sass
       # This can be overridden to create other normalization behaviors.
       def normalize(key)
         key.tr("-", "_")
+      end
+
+      # Returns the version of `key` as it was stored before
+      # normalization. If `key` isn't in the map, returns it as it was
+      # passed in.
+      #
+      # @return [String]
+      def denormalize(key)
+        @key_strings[normalize(key)] || key
       end
 
       # @private
@@ -91,6 +101,11 @@ module Sass
 
       def sort_by
         @map.sort_by {|k, v| yield k, v}
+      end
+
+      def update(map)
+        map = map.as_stored if map.is_a?(NormalizedMap)
+        map.each {|k, v| self[k] = v}
       end
 
       def method_missing(method, *args, &block)

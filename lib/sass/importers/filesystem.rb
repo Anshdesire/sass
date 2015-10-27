@@ -1,4 +1,3 @@
-require 'pathname'
 require 'set'
 
 module Sass
@@ -6,7 +5,6 @@ module Sass
     # The default importer, used for any strings found in the load path.
     # Simply loads Sass files from the filesystem using the default logic.
     class Filesystem < Base
-
       attr_accessor :root
 
       # Creates a new filesystem importer that imports files relative to a given path.
@@ -15,6 +13,7 @@ module Sass
       #   This importer will import files relative to this path.
       def initialize(root)
         @root = File.expand_path(root)
+        @real_root = Sass::Util.realpath(@root).to_s
         @same_name_warnings = Set.new
       end
 
@@ -52,7 +51,7 @@ module Sass
       end
 
       def eql?(other)
-        root.eql?(other.root)
+        !other.nil? && other.respond_to?(:root) && root.eql?(other.root)
       end
 
       # @see Base#directories_to_watch
@@ -62,8 +61,22 @@ module Sass
 
       # @see Base#watched_file?
       def watched_file?(filename)
-        filename =~ /\.s[ac]ss$/ &&
-          filename.start_with?(root + File::SEPARATOR)
+        # Check against the root with symlinks resolved, since Listen
+        # returns fully-resolved paths.
+        filename =~ /\.s[ac]ss$/ && filename.start_with?(@real_root + File::SEPARATOR)
+      end
+
+      def public_url(name, sourcemap_directory)
+        file_pathname = Sass::Util.cleanpath(Sass::Util.absolute_path(name, @root))
+        return Sass::Util.file_uri_from_path(file_pathname) if sourcemap_directory.nil?
+
+        sourcemap_pathname = Sass::Util.cleanpath(sourcemap_directory)
+        begin
+          Sass::Util.file_uri_from_path(
+            Sass::Util.relative_path_from(file_pathname, sourcemap_pathname))
+        rescue ArgumentError # when a relative path cannot be constructed
+          Sass::Util.file_uri_from_path(file_pathname)
+        end
       end
 
       protected
@@ -120,34 +133,35 @@ module Sass
 
       REDUNDANT_DIRECTORY = /#{Regexp.escape(File::SEPARATOR)}\.#{Regexp.escape(File::SEPARATOR)}/
       # Given a base directory and an `@import`ed name,
-      # finds an existant file that matches the name.
+      # finds an existent file that matches the name.
       #
       # @param dir [String] The directory relative to which to search.
       # @param name [String] The filename to search for.
       # @return [(String, Symbol)] A filename-syntax pair.
       def find_real_file(dir, name, options)
-        # on windows 'dir' can be in native File::ALT_SEPARATOR form
+        # On windows 'dir' or 'name' can be in native File::ALT_SEPARATOR form.
         dir = dir.gsub(File::ALT_SEPARATOR, File::SEPARATOR) unless File::ALT_SEPARATOR.nil?
+        name = name.gsub(File::ALT_SEPARATOR, File::SEPARATOR) unless File::ALT_SEPARATOR.nil?
 
         found = possible_files(remove_root(name)).map do |f, s|
-          path = dir == "." || Pathname.new(f).absolute? ? f : "#{dir}/#{f}"
+          path = (dir == "." || Sass::Util.pathname(f).absolute?) ? f :
+            "#{escape_glob_characters(dir)}/#{f}"
           Dir[path].map do |full_path|
             full_path.gsub!(REDUNDANT_DIRECTORY, File::SEPARATOR)
-            [full_path, s]
+            [Sass::Util.cleanpath(full_path).to_s, s]
           end
-        end
-        found = Sass::Util.flatten(found, 1)
+        end.flatten(1)
         return if found.empty?
 
         if found.size > 1 && !@same_name_warnings.include?(found.first.first)
           found.each {|(f, _)| @same_name_warnings << f}
-          relative_to = Pathname.new(dir)
+          relative_to = Sass::Util.pathname(dir)
           if options[:_from_import_node]
             # If _line exists, we're here due to an actual import in an
             # import_node and we want to print a warning for a user writing an
             # ambiguous import.
             candidates = found.map do |(f, _)|
-              "  " + Pathname.new(f).relative_path_from(relative_to).to_s
+              "  " + Sass::Util.pathname(f).relative_path_from(relative_to).to_s
             end.join("\n")
             raise Sass::SyntaxError.new(<<MESSAGE)
 It's not clear which file to import for '@import "#{name}"'.
@@ -187,14 +201,15 @@ WARNING
         full_filename, syntax = Sass::Util.destructure(find_real_file(dir, name, options))
         return unless full_filename && File.readable?(full_filename)
 
+        # TODO: this preserves historical behavior, but it's possible
+        # :filename should be either normalized to the native format
+        # or consistently URI-format.
+        full_filename = full_filename.tr("\\", "/") if Sass::Util.windows?
+
         options[:syntax] = syntax
         options[:filename] = full_filename
         options[:importer] = self
         Sass::Engine.new(File.read(full_filename), options)
-      end
-
-      def join(base, path)
-        Pathname.new(base).join(path).to_s
       end
     end
   end

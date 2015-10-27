@@ -1,5 +1,3 @@
-require 'pathname'
-
 module Sass::Source
   class Map
     # A mapping from one source range to another. Indicates that `input` was
@@ -70,12 +68,6 @@ module Sass::Source
     # it will be inferred from `:css_path` and `:sourcemap_path` using the
     # assumption that the local file system has the same layout as the server.
     #
-    # If any source stylesheets use the default filesystem importer, sourcemap
-    # generation will fail unless the `:sourcemap_path` option is specified.
-    # The layout of the local file system is assumed to be the same as the
-    # layout of the server for the purposes of linking to source stylesheets
-    # that use the filesystem importer.
-    #
     # Regardless of which options are passed to this method, source stylesheets
     # that are imported using a non-default importer will only be linked to in
     # the source map if their importers implement
@@ -87,6 +79,8 @@ module Sass::Source
     #   The local path of the CSS output file.
     # @option options :sourcemap_path [String]
     #   The (eventual) local path of the sourcemap file.
+    # @option options :type [Symbol]
+    #   `:auto` (default),  `:file`, or `:inline`.
     # @return [String] The JSON string.
     # @raise [ArgumentError] If neither `:css_uri` nor `:css_path` and
     #   `:sourcemap_path` are specified.
@@ -94,24 +88,25 @@ module Sass::Source
     #   rubocop:disable MethodLength
     def to_json(options)
       css_uri, css_path, sourcemap_path =
-        [:css_uri, :css_path, :sourcemap_path].map {|o| options[o]}
+        options[:css_uri], options[:css_path], options[:sourcemap_path]
       unless css_uri || (css_path && sourcemap_path)
-        raise ArgumentError.new("Sass::Source::Map#to_json requires either " +
+        raise ArgumentError.new("Sass::Source::Map#to_json requires either " \
           "the :css_uri option or both the :css_path and :soucemap_path options.")
       end
-      css_path &&= Pathname.pwd.join(Pathname.new(css_path)).cleanpath
-      sourcemap_path &&= Pathname.pwd.join(Pathname.new(sourcemap_path)).cleanpath
-      css_uri ||= css_path.relative_path_from(sourcemap_path.dirname).to_s
+      css_path &&= Sass::Util.pathname(Sass::Util.absolute_path(css_path))
+      sourcemap_path &&= Sass::Util.pathname(Sass::Util.absolute_path(sourcemap_path))
+      css_uri ||= Sass::Util.file_uri_from_path(
+        Sass::Util.relative_path_from(css_path, sourcemap_path.dirname))
 
       result = "{\n"
       write_json_field(result, "version", 3, true)
 
       source_uri_to_id = {}
       id_to_source_uri = {}
+      id_to_contents = {} if options[:type] == :inline
       next_source_id = 0
       line_data = []
       segment_data_for_line = []
-      no_public_url = Set.new
 
       # These track data necessary for the delta coding.
       previous_target_line = nil
@@ -122,21 +117,14 @@ module Sass::Source
 
       @data.each do |m|
         file, importer = m.input.file, m.input.importer
-        unless (source_uri = importer && importer.public_url(file))
-          if importer.is_a?(Sass::Importers::Filesystem) && sourcemap_path
-            file_path = Pathname.new(importer.root).join(file)
-            source_uri = file_path.relative_path_from(sourcemap_path.dirname).to_s
-          elsif no_public_url.include?(file)
-            next
-          else
-            no_public_url << file
-            Sass::Util.sass_warn <<WARNING
-WARNING: Couldn't determine public URL for "#{file}" while generating sourcemap.
-  Without a public URL, there's nothing for the source map to link to.
-  Custom importers should define the #public_url method.
-WARNING
-            next
-          end
+
+        if options[:type] == :inline
+          source_uri = file
+        else
+          sourcemap_dir = sourcemap_path && sourcemap_path.dirname.to_s
+          sourcemap_dir = nil if options[:type] == :file
+          source_uri = importer && importer.public_url(file, sourcemap_dir)
+          next unless source_uri
         end
 
         current_source_id = source_uri_to_id[source_uri]
@@ -146,6 +134,11 @@ WARNING
 
           source_uri_to_id[source_uri] = current_source_id
           id_to_source_uri[current_source_id] = source_uri
+
+          if options[:type] == :inline
+            id_to_contents[current_source_id] =
+              importer.find(file, {}).instance_variable_get('@template')
+          end
         end
 
         [
@@ -190,6 +183,13 @@ WARNING
       source_names = []
       (0...next_source_id).each {|id| source_names.push(id_to_source_uri[id].to_s)}
       write_json_field(result, "sources", source_names)
+
+      if options[:type] == :inline
+        write_json_field(result, "sourcesContent",
+          (0...next_source_id).map {|id| id_to_contents[id]})
+      end
+
+      write_json_field(result, "names", [])
       write_json_field(result, "file", css_uri)
 
       result << "\n}"

@@ -3,7 +3,7 @@
 require File.dirname(__FILE__) + '/../test_helper'
 require 'sass/engine'
 
-class SassScriptConversionTest < Test::Unit::TestCase
+class SassScriptConversionTest < MiniTest::Test
   def test_bool
     assert_renders "true"
     assert_renders "false"
@@ -13,9 +13,8 @@ class SassScriptConversionTest < Test::Unit::TestCase
     assert_renders "#abcdef"
     assert_renders "blue"
     assert_renders "rgba(0, 1, 2, 0.2)"
-
-    assert_equal "#aabbcc", render("#abc")
-    assert_equal "blue", render("#0000ff")
+    assert_renders "#abc"
+    assert_renders "#0000ff"
   end
 
   def test_number
@@ -58,6 +57,10 @@ class SassScriptConversionTest < Test::Unit::TestCase
     assert_renders "foo($karg1: val, $karg2: val2)"
   end
 
+  def test_funcall_with_hyphen_conversion_keyword_arg
+    assert_renders "foo($a-b_c: val)"
+  end
+
   def test_url
     assert_renders "url(foo.gif)"
     assert_renders "url($var)"
@@ -71,6 +74,26 @@ class SassScriptConversionTest < Test::Unit::TestCase
 
   def test_null
     assert_renders "null"
+  end
+
+  def test_space_list
+    assert_renders "foo bar baz"
+    assert_renders "foo (bar baz) bip"
+    assert_renders "foo (bar, baz) bip"
+  end
+
+  def test_comma_list
+    assert_renders "foo, bar, baz"
+    assert_renders "foo, (bar, baz), bip"
+    assert_renders "foo, bar baz, bip"
+  end
+
+  def test_space_list_adds_parens_for_clarity
+    assert_renders "(1 + 1) (2 / 4) (3 * 5)"
+  end
+
+  def test_comma_list_doesnt_add_parens
+    assert_renders "1 + 1, 2 / 4, 3 * 5"
   end
 
   def test_empty_list
@@ -113,7 +136,7 @@ class SassScriptConversionTest < Test::Unit::TestCase
     op_outer = Sass::Script::Lexer::OPERATORS_REVERSE[outer]
     op_inner = Sass::Script::Lexer::OPERATORS_REVERSE[inner]
     class_eval <<RUBY
-      def test_precedence_#{outer}_#{inner} 
+      def test_precedence_#{outer}_#{inner}
         assert_renders "$foo #{op_outer} $bar #{op_inner} $baz"
         assert_renders "$foo #{op_inner} $bar #{op_outer} $baz"
 
@@ -132,7 +155,7 @@ RUBY
     op = separator_for(op_name)
     sibling = separator_for(sibling_name)
     class_eval <<RUBY
-      def test_associative_#{op_name}_#{sibling_name} 
+      def test_associative_#{op_name}_#{sibling_name}
         assert_renders "$foo#{op}$bar#{op}$baz"
 
         assert_equal "$foo#{op}$bar#{op}$baz",
@@ -160,7 +183,7 @@ RUBY
     op = Sass::Script::Lexer::OPERATORS_REVERSE[op_name]
     sibling = Sass::Script::Lexer::OPERATORS_REVERSE[sibling_name]
     class_eval <<RUBY
-      def test_non_associative_#{op_name}_#{sibling_name} 
+      def test_non_associative_#{op_name}_#{sibling_name}
         assert_renders "$foo #{op} $bar #{op} $baz"
 
         assert_renders "$foo #{op} ($bar #{op} $baz)"
@@ -218,8 +241,8 @@ RUBY
     assert_renders "$foo or ($bar $baz)"
     assert_renders "($foo $bar) or $baz"
 
-    assert_equal "$foo $bar or $baz", render("$foo ($bar or $baz)")
-    assert_equal "$foo or $bar $baz", render("($foo or $bar) $baz")
+    assert_renders "$foo ($bar or $baz)"
+    assert_renders "($foo or $bar) $baz"
 
     assert_equal "$foo ($bar $baz)", render("$foo ($bar $baz)")
     assert_equal "($foo $bar) $baz", render("($foo $bar) $baz")
@@ -256,6 +279,11 @@ RUBY
     assert_renders 'flabnabbit(#{1 + "foo"})'
     assert_renders 'flabnabbit($foo #{1 + "foo"}$baz)'
     assert_renders 'flabnabbit($foo #{1 + "foo"}#{2 + "bar"} $baz)'
+  end
+
+  def test_interpolation_in_string_function
+    assert_renders 'calc(#{1 + "foo"})'
+    assert_renders 'calc(foo#{1 + "foo"}baz)'
   end
 
   def test_interpolation_near_operators

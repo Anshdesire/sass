@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 require File.dirname(__FILE__) + '/../test_helper'
 
-class ExtendTest < Test::Unit::TestCase
+class ExtendTest < MiniTest::Test
   def test_basic
     assert_equal <<CSS, render(<<SCSS)
 .foo, .bar {
@@ -145,8 +145,8 @@ SCSS
   end
 
   def test_class_unification
-    assert_unification '.foo.bar', '.baz {@extend .foo}', '.foo.bar, .bar.baz' 
-    assert_unification '.foo.baz', '.baz {@extend .foo}', '.baz' 
+    assert_unification '.foo.bar', '.baz {@extend .foo}', '.foo.bar, .bar.baz'
+    assert_unification '.foo.baz', '.baz {@extend .foo}', '.baz'
   end
 
   def test_id_unification
@@ -295,6 +295,18 @@ SCSS
     assert_extends 'a.foo:bar', '.baz {@extend .foo}', 'a.foo:bar, a.baz:bar'
   end
 
+  def test_id_unification
+    assert_unification('#id.foo .bar', '#id.baz .qux {@extend .bar}',
+        '#id.foo .bar, #id.baz.foo .qux')
+  end
+
+  def test_root_unification
+    assert_extends(
+      ".foo:root .bar",
+      ".baz:root .qux {@extend .bar}",
+      ".foo:root .bar, .baz.foo:root .qux")
+  end
+
   def test_not_remains_at_end_of_selector
     assert_extends '.foo:not(.bar)', '.baz {@extend .foo}', '.foo:not(.bar), .baz:not(.bar)'
   end
@@ -310,9 +322,207 @@ SCSS
   end
 
   def test_negation_unification
-    assert_unification ':not(.foo).baz', ':not(.bar) {@extend .baz}', ':not(.foo).baz, :not(.foo):not(.bar)'
-    assert_unification ':not(.foo).baz', ':not(.foo) {@extend .baz}', ':not(.foo)'
-    assert_unification ':not([a=b]).baz', ':not([a = b]) {@extend .baz}', ':not([a=b])'
+    assert_extends ':not(.foo).baz', ':not(.bar) {@extend .baz}', ':not(.foo).baz, :not(.foo):not(.bar)'
+    # Unifying to :not(.foo) here would reduce the specificity of the original selector.
+    assert_extends ':not(.foo).baz', ':not(.foo) {@extend .baz}', ':not(.foo).baz, :not(.foo)'
+  end
+
+  def test_prefixed_pseudoclass_unification
+    assert_unification(
+      ':nth-child(2n+1 of .foo).baz',
+      ':nth-child(2n of .foo) {@extend .baz}',
+      ':nth-child(2n+1 of .foo).baz, :nth-child(2n+1 of .foo):nth-child(2n of .foo)')
+
+    assert_unification(
+      ':nth-child(2n+1 of .foo).baz',
+      ':nth-child(2n+1 of .bar) {@extend .baz}',
+      ':nth-child(2n+1 of .foo).baz, :nth-child(2n+1 of .foo):nth-child(2n+1 of .bar)')
+
+    assert_unification(
+      ':nth-child(2n+1 of .foo).baz',
+      ':nth-child(2n+1 of .foo) {@extend .baz}',
+      ':nth-child(2n+1 of .foo)')
+  end
+
+  def test_extend_into_not
+    assert_extends(':not(.foo)', '.x {@extend .foo}', ':not(.foo):not(.x)')
+    assert_extends(':not(.foo.bar)', '.x {@extend .bar}', ':not(.foo.bar):not(.foo.x)')
+    assert_extends(
+      ':not(.foo.bar, .baz.bar)',
+      '.x {@extend .bar}',
+      ':not(.foo.bar, .foo.x, .baz.bar, .baz.x)')
+  end
+
+  def test_extend_into_mergeable_pseudoclasses
+    assert_extends(':matches(.foo)', '.x {@extend .foo}', ':matches(.foo, .x)')
+    assert_extends(':matches(.foo.bar)', '.x {@extend .bar}', ':matches(.foo.bar, .foo.x)')
+    assert_extends(
+      ':matches(.foo.bar, .baz.bar)',
+      '.x {@extend .bar}',
+      ':matches(.foo.bar, .foo.x, .baz.bar, .baz.x)')
+
+    assert_extends(':-moz-any(.foo)', '.x {@extend .foo}', ':-moz-any(.foo, .x)')
+    assert_extends(':current(.foo)', '.x {@extend .foo}', ':current(.foo, .x)')
+    assert_extends(':has(.foo)', '.x {@extend .foo}', ':has(.foo, .x)')
+    assert_extends(':host(.foo)', '.x {@extend .foo}', ':host(.foo, .x)')
+    assert_extends(':host-context(.foo)', '.x {@extend .foo}', ':host-context(.foo, .x)')
+    assert_extends(':nth-child(n of .foo)', '.x {@extend .foo}', ':nth-child(n of .foo, .x)')
+    assert_extends(
+      ':nth-last-child(n of .foo)',
+      '.x {@extend .foo}',
+      ':nth-last-child(n of .foo, .x)')
+  end
+
+  def test_complex_extend_into_pseudoclass
+    # Unlike other selectors, we don't allow complex selectors to be
+    # added to `:not` if they weren't there before. At time of
+    # writing, most browsers don't support that and will throw away
+    # the entire selector if it exists.
+    #assert_extends(':not(.bar)', '.x .y {@extend .bar}', ':not(.bar)')
+
+    # If the `:not()` already has a complex selector, we won't break
+    # anything by adding a new one.
+    assert_extends(':not(.baz .bar)', '.x .y {@extend .bar}',
+      ':not(.baz .bar):not(.baz .x .y):not(.x .baz .y)')
+
+    # If the `:not()` would only contain complex selectors, there's no
+    # harm in letting it continue to exist.
+    assert_extends(':not(%bar)', '.x .y {@extend %bar}', ':not(.x .y)')
+
+    assert_extends(':matches(.bar)', '.x .y {@extend .bar}', ':matches(.bar, .x .y)')
+    assert_extends(':current(.bar)', '.x .y {@extend .bar}', ':current(.bar, .x .y)')
+    assert_extends(':has(.bar)', '.x .y {@extend .bar}', ':has(.bar, .x .y)')
+    assert_extends(':host(.bar)', '.x .y {@extend .bar}', ':host(.bar, .x .y)')
+    assert_extends(':host-context(.bar)', '.x .y {@extend .bar}', ':host-context(.bar, .x .y)')
+    assert_extends(
+      ':-moz-any(.bar)',
+      '.x .y {@extend .bar}',
+      ':-moz-any(.bar, .x .y)')
+    assert_extends(
+      ':nth-child(n of .bar)',
+      '.x .y {@extend .bar}',
+      ':nth-child(n of .bar, .x .y)')
+    assert_extends(
+      ':nth-last-child(n of .bar)',
+      '.x .y {@extend .bar}',
+      ':nth-last-child(n of .bar, .x .y)')
+  end
+
+  def test_extend_over_selector_pseudoclass
+    assert_extends(':not(.foo)', '.x {@extend :not(.foo)}', ':not(.foo), .x')
+    assert_extends(
+      ':matches(.foo, .bar)',
+      '.x {@extend :matches(.foo, .bar)}',
+      ':matches(.foo, .bar), .x')
+  end
+
+  def test_matches_within_not
+    assert_extends(
+      ':not(.foo, .bar)',
+      ':matches(.x, .y) {@extend .foo}',
+      ':not(.foo, .x, .y, .bar)')
+  end
+
+  def test_pseudoclasses_merge
+    assert_extends(':matches(.foo)', ':matches(.bar) {@extend .foo}', ':matches(.foo, .bar)')
+    assert_extends(':-moz-any(.foo)', ':-moz-any(.bar) {@extend .foo}', ':-moz-any(.foo, .bar)')
+    assert_extends(':current(.foo)', ':current(.bar) {@extend .foo}', ':current(.foo, .bar)')
+    assert_extends(
+      ':nth-child(n of .foo)',
+      ':nth-child(n of .bar) {@extend .foo}',
+      ':nth-child(n of .foo, .bar)')
+    assert_extends(
+      ':nth-last-child(n of .foo)',
+      ':nth-last-child(n of .bar) {@extend .foo}',
+      ':nth-last-child(n of .foo, .bar)')
+  end
+
+  def test_nesting_pseudoclasses_merge
+    assert_extends(':has(.foo)', ':has(.bar) {@extend .foo}', ':has(.foo, :has(.bar))')
+    assert_extends(':host(.foo)', ':host(.bar) {@extend .foo}', ':host(.foo, :host(.bar))')
+    assert_extends(
+      ':host-context(.foo)',
+      ':host-context(.bar) {@extend .foo}',
+      ':host-context(.foo, :host-context(.bar))')
+  end
+
+  def test_not_unifies_with_unique_values
+    assert_unification('foo', ':not(bar) {@extend foo}', ':not(bar)')
+    assert_unification('#foo', ':not(#bar) {@extend #foo}', ':not(#bar)')
+  end
+
+  def test_not_adds_no_specificity
+    assert_specificity_equals(':not(.foo)', '.foo')
+  end
+
+  def test_matches_has_a_specificity_range
+    # `:matches(.foo, #bar)` has minimum specificity equal to that of `.foo`,
+    # which means `:matches(.foo, #bar) .a` can have less specificity than
+    # `#b.a`. Thus the selector generated by `#b.a` should be preserved.
+    assert_equal <<CSS, render(<<SCSS)
+:matches(.foo, #bar) .a, :matches(.foo, #bar) #b.a {
+  a: b; }
+CSS
+:matches(.foo, #bar) %x {a: b}
+.a {@extend %x}
+#b.a {@extend %x}
+SCSS
+
+    # `:matches(.foo, #bar)` has maximum specificity equal to that of `#bar`,
+    # which means `:matches(.foo, #bar).b` can have greater specificity than `.a
+    # .b`. Thus the selector generated by `:matches(.foo, #bar).b` should be
+    # preserved.
+    assert_equal <<CSS, render(<<SCSS)
+.a .b, .a .b:matches(.foo, #bar) {
+  a: b; }
+CSS
+.a %x {a: b}
+.b {@extend %x}
+.b:matches(.foo, #bar) {@extend %x}
+SCSS
+  end
+
+  def test_extend_into_not_and_normal_extend
+    assert_equal <<CSS, render(<<SCSS)
+.x:not(.y):not(.bar), .foo:not(.y):not(.bar) {
+  a: b; }
+CSS
+.x:not(.y) {a: b}
+.foo {@extend .x}
+.bar {@extend .y}
+SCSS
+  end
+
+  def test_extend_into_matches_and_normal_extend
+    assert_equal <<CSS, render(<<SCSS)
+.x:matches(.y, .bar), .foo:matches(.y, .bar) {
+  a: b; }
+CSS
+.x:matches(.y) {a: b}
+.foo {@extend .x}
+.bar {@extend .y}
+SCSS
+  end
+
+  def test_multilayer_pseudoclass_extend
+    assert_equal <<CSS, render(<<SCSS)
+:matches(.x, .foo, .bar) {
+  a: b; }
+CSS
+:matches(.x) {a: b}
+.foo {@extend .x}
+.bar {@extend .foo}
+SCSS
+  end
+
+  def test_root_only_allowed_at_root
+    assert_extends(':root .foo', '.bar .baz {@extend .foo}',
+      ':root .foo, :root .bar .baz')
+    assert_extends('.foo:root .bar', '.baz:root .bang {@extend .bar}',
+      '.foo:root .bar, .baz.foo:root .bang')
+    assert_extends('html:root .bar', 'xml:root .bang {@extend .bar}', 'html:root .bar')
+    assert_extends('.foo:root > .bar .x', '.baz:root .bang .y {@extend .x}',
+      '.foo:root > .bar .x, .baz.foo:root > .bar .bang .y')
   end
 
   def test_comma_extendee
@@ -337,6 +547,18 @@ CSS
 .foo.bar {a: b}
 .x {@extend .foo, .bar}
 .y {@extend .foo, .bar}
+SCSS
+  end
+
+  def test_nested_pseudo_selectors
+    assert_equal <<CSS, render(<<SCSS)
+.foo .bar:not(.baz), .bang .bar:not(.baz) {
+  a: b; }
+CSS
+.foo {
+  .bar:not(.baz) {a: b}
+}
+.bang {@extend .foo}
 SCSS
   end
 
@@ -516,7 +738,7 @@ SCSS
   end
 
   def test_nested_extender_with_trailing_child_selector
-    assert_raise(Sass::SyntaxError, "bar > can't extend: invalid selector") do
+    assert_raises(Sass::SyntaxError, "bar > can't extend: invalid selector") do
       render("bar > {@extend .baz}")
     end
   end
@@ -650,10 +872,10 @@ SCSS
 
   def test_basic_extend_loop
     assert_equal <<CSS, render(<<SCSS)
-.bar, .foo {
+.foo, .bar {
   a: b; }
 
-.foo, .bar {
+.bar, .foo {
   c: d; }
 CSS
 .foo {a: b; @extend .bar}
@@ -663,13 +885,13 @@ SCSS
 
   def test_three_level_extend_loop
     assert_equal <<CSS, render(<<SCSS)
-.baz, .bar, .foo {
+.foo, .baz, .bar {
   a: b; }
 
-.foo, .baz, .bar {
+.bar, .foo, .baz {
   c: d; }
 
-.bar, .foo, .baz {
+.baz, .bar, .foo {
   e: f; }
 CSS
 .foo {a: b; @extend .bar}
@@ -689,6 +911,18 @@ CSS
   a: b;
   .foo {c: d; @extend .bar}
 }
+SCSS
+  end
+
+  def test_cross_loop
+    # The first law of extend means the selector should stick around.
+    assert_equal <<CSS, render(<<SCSS)
+.foo.bar, .foo, .bar {
+  a: b; }
+CSS
+.foo.bar {a: b}
+.foo {@extend .bar}
+.bar {@extend .foo}
 SCSS
   end
 
@@ -827,6 +1061,17 @@ $foo: foo;
 
 %\#{$foo} {color: blue}
 .bar {@extend %foo}
+SCSS
+  end
+
+  def test_placeholder_in_selector_pseudoclass
+    assert_equal <<CSS, render(<<SCSS)
+:matches(.bar, .baz) {
+  color: blue; }
+CSS
+:matches(%foo) {color: blue}
+.bar {@extend %foo}
+.baz {@extend %foo}
 SCSS
   end
 
@@ -1005,7 +1250,7 @@ SCSS
   end
 
   def test_extend_with_subject_transfers_subject_to_extender
-    assert_equal(<<CSS, render(<<SCSS))
+    silence_warnings {assert_equal(<<CSS, render(<<SCSS))}
 foo bar! baz, foo .bip .bap! baz, .bip foo .bap! baz {
   a: b; }
 CSS
@@ -1013,7 +1258,7 @@ foo bar! baz {a: b}
 .bip .bap {@extend bar}
 SCSS
 
-    assert_equal(<<CSS, render(<<SCSS))
+    silence_warnings {assert_equal(<<CSS, render(<<SCSS))}
 foo.x bar.y! baz.z, foo.x .bip bar.bap! baz.z, .bip foo.x bar.bap! baz.z {
   a: b; }
 CSS
@@ -1023,7 +1268,7 @@ SCSS
   end
 
   def test_extend_with_subject_retains_subject_on_target
-    assert_equal(<<CSS, render(<<SCSS))
+    silence_warnings {assert_equal(<<CSS, render(<<SCSS))}
 .foo! .bar, .foo! .bip .bap, .bip .foo! .bap {
   a: b; }
 CSS
@@ -1033,7 +1278,7 @@ SCSS
   end
 
   def test_extend_with_subject_transfers_subject_to_target
-    assert_equal(<<CSS, render(<<SCSS))
+    silence_warnings {assert_equal(<<CSS, render(<<SCSS))}
 a.foo .bar, .bip a.bap! .bar {
   a: b; }
 CSS
@@ -1043,7 +1288,7 @@ SCSS
   end
 
   def test_extend_with_subject_retains_subject_on_extender
-    assert_equal(<<CSS, render(<<SCSS))
+    silence_warnings {assert_equal(<<CSS, render(<<SCSS))}
 .foo .bar, .foo .bip! .bap, .bip! .foo .bap {
   a: b; }
 CSS
@@ -1053,7 +1298,7 @@ SCSS
   end
 
   def test_extend_with_subject_fails_with_conflicting_subject
-    assert_equal(<<CSS, render(<<SCSS))
+    silence_warnings {assert_equal(<<CSS, render(<<SCSS))}
 x! .bar {
   a: b; }
 CSS
@@ -1114,6 +1359,26 @@ SCSS
   end
 
   # Regression Tests
+
+  def test_extend_with_middle_pseudo
+    assert_equal(<<CSS, render(<<SCSS))
+.btn:active.focus, :active.focus:before {
+  a: b; }
+CSS
+.btn:active.focus {a: b}
+:before {@extend .btn}
+SCSS
+  end
+
+  def test_extend_parent_selector_suffix
+    assert_equal <<CSS, render(<<SCSS)
+.a-b, .c {
+  x: y; }
+CSS
+.a {&-b {x: y}}
+.c {@extend .a-b}
+SCSS
+  end
 
   def test_pseudo_element_superselector
     # Pseudo-elements shouldn't be removed in superselector calculations.
@@ -1398,12 +1663,28 @@ Use "@extend #{target} !optional" if the extend should be able to fail.
 ERR
   end
 
-  def assert_unification(selector, extension, unified)
+  def assert_unification(selector, extension, unified, nested = true)
     # Do some trickery so the first law of extend doesn't get in our way.
     assert_extends(
       "%-a #{selector}",
       extension + " -a {@extend %-a}",
       unified.split(', ').map {|s| "-a #{s}"}.join(', '))
+  end
+
+  def assert_specificity_equals(sel1, sel2)
+    assert_specificity_gte(sel1, sel2)
+    assert_specificity_gte(sel2, sel1)
+  end
+
+  def assert_specificity_gte(sel1, sel2)
+    assert_equal <<CSS, render(<<SCSS)
+#{sel1} .a {
+  a: b; }
+CSS
+#{sel1} %-a {a: b}
+.a {@extend %-a}
+#{sel2}.a {@extend %-a}
+SCSS
   end
 
   def render_unification(selector, extension)
@@ -1417,6 +1698,10 @@ ERR
 #{result} {
   a: b; }
 CSS
+  end
+
+  def assert_extends_to_nothing(selector, extension)
+    assert_equal '', render_extends(selector, extension)
   end
 
   def render_extends(selector, extension)

@@ -51,6 +51,10 @@ class Sass::Tree::Visitors::ToCss < Sass::Tree::Visitors::Base
     @source_mapping.add(source_range, target_range)
   end
 
+  def ends_with?(str)
+    @result.end_with?(str)
+  end
+
   # Move the output cursor back `chars` characters.
   def erase!(chars)
     return if chars == 0
@@ -124,24 +128,24 @@ class Sass::Tree::Visitors::ToCss < Sass::Tree::Visitors::Base
       end
     end
     rstrip!
+    if node.style == :compressed && ends_with?(";")
+      erase! 1
+    end
     return "" if @result.empty?
 
     output "\n"
-    return @result if Sass::Util.ruby1_8? || @result.ascii_only?
 
-    if node.children.first.is_a?(Sass::Tree::CharsetNode)
-      begin
-        encoding = node.children.first.name
-        # Default to big-endian encoding, because we have to decide somehow
-        encoding << 'BE' if encoding =~ /\Autf-(16|32)\Z/i
-        @result = @result.encode(Encoding.find(encoding))
-      rescue EncodingError
+    unless Sass::Util.ruby1_8? || @result.ascii_only?
+      if node.style == :compressed
+        # A byte order mark is sufficient to tell browsers that this
+        # file is UTF-8 encoded, and will override any other detection
+        # methods as per http://encoding.spec.whatwg.org/#decode-and-encode.
+        prepend! "\uFEFF"
+      else
+        prepend! "@charset \"UTF-8\";\n"
       end
     end
 
-    prepend! "@charset \"#{@result.encoding.name}\";#{
-      node.style == :compressed ? '' : "\n"
-    }".encode(@result.encoding)
     @result
   rescue Sass::SyntaxError => e
     e.sass_template ||= node.template
@@ -174,7 +178,11 @@ class Sass::Tree::Visitors::ToCss < Sass::Tree::Visitors::Base
     if !node.has_children || node.children.empty?
       output(tab_str)
       for_node(node) {output(node.resolved_value)}
-      output(!node.has_children ? ";" : " {}")
+      if node.has_children
+        output("#{' ' unless node.style == :compressed}{}")
+      elsif node.children.empty?
+        output(";")
+      end
       return
     end
 
@@ -184,18 +192,18 @@ class Sass::Tree::Visitors::ToCss < Sass::Tree::Visitors::Base
     output(node.style == :compressed ? "{" : " {")
     output(node.style == :compact ? ' ' : "\n") if node.style != :compressed
 
-    was_prop = false
+    had_children = true
     first = true
     node.children.each do |child|
       next if child.invisible?
       if node.style == :compact
         if child.is_a?(Sass::Tree::PropNode)
-          with_tabs(first || was_prop ? 0 : @tabs + 1) do
+          with_tabs(first || !had_children ? 0 : @tabs + 1) do
             visit(child)
             output(' ')
           end
         else
-          if was_prop
+          unless had_children
             erase! 1
             output "\n"
           end
@@ -209,18 +217,23 @@ class Sass::Tree::Visitors::ToCss < Sass::Tree::Visitors::Base
           rstrip!
           output "\n"
         end
-        was_prop = child.is_a?(Sass::Tree::PropNode)
+        had_children = child.has_children
         first = false
       elsif node.style == :compressed
-        output(was_prop ? ";" : "")
+        unless had_children
+          output(";") unless ends_with?(";")
+        end
         with_tabs(0) {visit(child)}
-        was_prop = child.is_a?(Sass::Tree::PropNode)
+        had_children = child.has_children
       else
         with_tabs(@tabs + 1) {visit(child)}
         output "\n"
       end
     end
     rstrip!
+    if node.style == :compressed && ends_with?(";")
+      erase! 1
+    end
     if node.style == :expanded
       output("\n#{tab_str}")
     elsif node.style != :compressed
@@ -235,7 +248,7 @@ class Sass::Tree::Visitors::ToCss < Sass::Tree::Visitors::Base
 
   def visit_media(node)
     with_tabs(@tabs + node.tabs) {visit_directive(node)}
-    output("\n") if node.group_end
+    output("\n") if node.style != :compressed && node.group_end
   end
 
   def visit_supports(node)
@@ -281,7 +294,7 @@ class Sass::Tree::Visitors::ToCss < Sass::Tree::Visitors::Base
 
       joined_rules = node.resolved_rules.members.map do |seq|
         next if seq.has_placeholder?
-        rule_part = seq.to_a.join
+        rule_part = seq.to_s
         if node.style == :compressed
           rule_part.gsub!(/([^,])\s*\n\s*/m, '\1 ')
           rule_part.gsub!(/\s*([,+>])\s*/m, '\1')
@@ -306,14 +319,15 @@ class Sass::Tree::Visitors::ToCss < Sass::Tree::Visitors::Base
           output("#{old_spaces}/* line #{node.line}")
 
           if node.filename
-            relative_filename = if node.options[:css_filename]
-                                  begin
-                                    Pathname.new(node.filename).relative_path_from(
-                                      Pathname.new(File.dirname(node.options[:css_filename]))).to_s
-                                  rescue ArgumentError
-                                    nil
-                                  end
-                                end
+            relative_filename =
+              if node.options[:css_filename]
+                begin
+                  Sass::Util.relative_path_from(
+                    node.filename, File.dirname(node.options[:css_filename])).to_s
+                rescue ArgumentError
+                  nil
+                end
+              end
             relative_filename ||= node.filename
             output(", #{relative_filename}")
           end
@@ -340,9 +354,17 @@ class Sass::Tree::Visitors::ToCss < Sass::Tree::Visitors::Base
 
       with_tabs(tabs) do
         node.children.each_with_index do |child, i|
-          output(separator) if i > 0
+          if i > 0
+            if separator.start_with?(";") && ends_with?(";")
+              erase! 1
+            end
+            output(separator)
+          end
           visit(child)
         end
+      end
+      if node.style == :compressed && ends_with?(";")
+        erase! 1
       end
 
       output(end_props)
@@ -351,6 +373,10 @@ class Sass::Tree::Visitors::ToCss < Sass::Tree::Visitors::Base
   end
   # @comment
   #   rubocop:enable MethodLength
+
+  def visit_keyframerule(node)
+    visit_directive(node)
+  end
 
   private
 

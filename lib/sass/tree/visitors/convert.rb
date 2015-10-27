@@ -23,10 +23,13 @@ class Sass::Tree::Visitors::Convert < Sass::Tree::Visitors::Base
   def visit_children(parent)
     @tabs += 1
     return @format == :sass ? "\n" : " {}\n" if parent.children.empty?
+
+    res = visit_rule_level(parent.children)
+
     if @format == :sass
-      "\n"  + super.join.rstrip + "\n"
+      "\n"  + res.rstrip + "\n"
     else
-      " {\n" + super.join.rstrip + "\n#{ @tab_chars * (@tabs - 1)}}\n"
+      " {\n" + res.rstrip + "\n#{ @tab_chars * (@tabs - 1)}}\n"
     end
   ensure
     @tabs -= 1
@@ -34,20 +37,7 @@ class Sass::Tree::Visitors::Convert < Sass::Tree::Visitors::Base
 
   # Ensures proper spacing between top-level nodes.
   def visit_root(node)
-    Sass::Util.enum_cons(node.children + [nil], 2).map do |child, nxt|
-      visit(child) +
-        if nxt &&
-            (child.is_a?(Sass::Tree::CommentNode) &&
-              child.line + child.lines + 1 == nxt.line) ||
-            (child.is_a?(Sass::Tree::ImportNode) && nxt.is_a?(Sass::Tree::ImportNode) &&
-              child.line + 1 == nxt.line) ||
-            (child.is_a?(Sass::Tree::VariableNode) && nxt.is_a?(Sass::Tree::VariableNode) &&
-              child.line + 1 == nxt.line)
-          ""
-        else
-          "\n"
-        end
-    end.join.rstrip + "\n"
+    visit_rule_level(node.children)
   end
 
   def visit_charset(node)
@@ -68,7 +58,7 @@ class Sass::Tree::Visitors::Convert < Sass::Tree::Visitors::Base
       end
 
       if content.include?("\n")
-        content.gsub!(%r{\n( \*|//)}, "\n  ")
+        content.gsub!(/\n \*/, "\n  ")
         spaces = content.scan(/\n( *)/).map {|s| s.first.size}.min
         sep = node.type == :silent ? "\n//" : "\n *"
         if spaces >= 2
@@ -96,11 +86,15 @@ class Sass::Tree::Visitors::Convert < Sass::Tree::Visitors::Base
     "#{tab_str}@debug #{node.expr.to_sass(@options)}#{semi}\n"
   end
 
+  def visit_error(node)
+    "#{tab_str}@error #{node.expr.to_sass(@options)}#{semi}\n"
+  end
+
   def visit_directive(node)
     res = "#{tab_str}#{interp_to_src(node.value)}"
     res.gsub!(/^@import \#\{(.*)\}([^}]*)$/, '@import \1\2')
     return res + "#{semi}\n" unless node.has_children
-    res + yield + "\n"
+    res + yield
   end
 
   def visit_each(node)
@@ -109,8 +103,8 @@ class Sass::Tree::Visitors::Convert < Sass::Tree::Visitors::Base
   end
 
   def visit_extend(node)
-    "#{tab_str}@extend #{selector_to_src(node.selector).lstrip}#{semi}" +
-      "#{" !optional" if node.optional?}\n"
+    "#{tab_str}@extend #{selector_to_src(node.selector).lstrip}" +
+      "#{" !optional" if node.optional?}#{semi}\n"
   end
 
   def visit_for(node)
@@ -207,7 +201,7 @@ class Sass::Tree::Visitors::Convert < Sass::Tree::Visitors::Base
 
     unless node.args.empty? && node.keywords.empty? && node.splat.nil?
       args = node.args.map(&arg_to_sass)
-      keywords = Sass::Util.hash_to_a(node.keywords).
+      keywords = Sass::Util.hash_to_a(node.keywords.as_stored).
         map {|k, v| "$#{dasherize(k)}: #{arg_to_sass[v]}"}
 
       if node.splat
@@ -236,12 +230,13 @@ class Sass::Tree::Visitors::Convert < Sass::Tree::Visitors::Base
   end
 
   def visit_rule(node)
+    rule = node.parsed_rules ? [node.parsed_rules.to_s] : node.rule
     if @format == :sass
-      name = selector_to_sass(node.rule)
+      name = selector_to_sass(rule)
       name = "\\" + name if name[0] == ?:
       name.gsub(/^/, tab_str) + yield
     elsif @format == :scss
-      name = selector_to_scss(node.rule)
+      name = selector_to_scss(rule)
       res = name + yield
       if node.children.last.is_a?(Sass::Tree::CommentNode) && node.children.last.type == :silent
         res.slice!(-3..-1)
@@ -269,35 +264,51 @@ class Sass::Tree::Visitors::Convert < Sass::Tree::Visitors::Base
       "#{tab_str}@at-root #{query_interp_to_src(node.query)}#{yield}"
     elsif node.children.length == 1 && node.children.first.is_a?(Sass::Tree::RuleNode)
       rule = node.children.first
-      "#{tab_str}@at-root #{selector_to_src(rule.rule)}#{visit_children(rule)}"
+      "#{tab_str}@at-root #{selector_to_src(rule.rule).lstrip}#{visit_children(rule)}"
     else
       "#{tab_str}@at-root#{yield}"
     end
   end
 
+  def visit_keyframerule(node)
+    "#{tab_str}#{node.resolved_value}#{yield}"
+  end
+
   private
 
+  # Visit rule-level nodes and return their conversion with appropriate
+  # whitespace added.
+  def visit_rule_level(nodes)
+    Sass::Util.enum_cons(nodes + [nil], 2).map do |child, nxt|
+      visit(child) +
+        if nxt &&
+            (child.is_a?(Sass::Tree::CommentNode) && child.line + child.lines + 1 == nxt.line) ||
+            (child.is_a?(Sass::Tree::ImportNode) && nxt.is_a?(Sass::Tree::ImportNode) &&
+              child.line + 1 == nxt.line) ||
+            (child.is_a?(Sass::Tree::VariableNode) && nxt.is_a?(Sass::Tree::VariableNode) &&
+              child.line + 1 == nxt.line) ||
+            (child.is_a?(Sass::Tree::PropNode) && nxt.is_a?(Sass::Tree::PropNode))
+          ""
+        else
+          "\n"
+        end
+    end.join.rstrip + "\n"
+  end
+
   def interp_to_src(interp)
-    interp.map do |r|
-      next r if r.is_a?(String)
-      "\#{#{r.to_sass(@options)}}"
-    end.join
+    interp.map {|r| r.is_a?(String) ? r : r.to_sass(@options)}.join
   end
 
   # Like interp_to_src, but removes the unnecessary `#{}` around the keys and
   # values in query expressions.
   def query_interp_to_src(interp)
-    Sass::Util.enum_with_index(interp).map do |r, i|
-      next r if r.is_a?(String)
-      before, after = interp[i - 1], interp[i + 1]
-      if before.is_a?(String) && after.is_a?(String) &&
-          ((before[-1] == ?( && after[0] == ?:) ||
-           (before =~ /:\s*/ && after[0] == ?)))
-        r.to_sass(@options)
-      else
-        "\#{#{r.to_sass(@options)}}"
-      end
-    end.join
+    interp = interp.map do |e|
+      next e unless e.is_a?(Sass::Script::Tree::Literal)
+      next e unless e.value.is_a?(Sass::Script::Value::String)
+      e.value.value
+    end
+
+    interp_to_src(interp)
   end
 
   def selector_to_src(sel)
@@ -309,7 +320,7 @@ class Sass::Tree::Visitors::Convert < Sass::Tree::Visitors::Base
       if r.is_a?(String)
         r.gsub(/(,)?([ \t]*)\n\s*/) {$1 ? "#{$1}#{$2}\n" : " "}
       else
-        "\#{#{r.to_sass(@options)}}"
+        r.to_sass(@options)
       end
     end.join
   end

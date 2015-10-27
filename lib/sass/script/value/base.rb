@@ -11,26 +11,17 @@ module Sass::Script::Value
     # @return [Object]
     attr_reader :value
 
-    # The line of the document on which this node appeared.
-    #
-    # @return [Fixnum]
-    attr_accessor :line
-
     # The source range in the document on which this node appeared.
     #
     # @return [Sass::Source::Range]
     attr_accessor :source_range
 
-    # The file name of the document on which this node appeared.
-    #
-    # @return [String]
-    attr_accessor :filename
-
     # Creates a new value.
     #
     # @param value [Object] The object for \{#value}
     def initialize(value = nil)
-      @value = value.freeze
+      value.freeze unless value.nil? || value == true || value == false
+      @value = value
     end
 
     # Sets the options hash for this node,
@@ -105,10 +96,8 @@ MSG
     # @return [Script::Value::String] A string containing both values
     #   without any separation
     def plus(other)
-      if other.is_a?(Sass::Script::Value::String)
-        return Sass::Script::Value::String.new(to_s + other.value, other.type)
-      end
-      Sass::Script::Value::String.new(to_s + other.to_s)
+      type = other.is_a?(Sass::Script::Value::String) ? other.type : :identifier
+      Sass::Script::Value::String.new(to_s(:quote => :none) + other.to_s(:quote => :none), type)
     end
 
     # The SassScript `-` operation.
@@ -222,6 +211,9 @@ MSG
     # Returns the string representation of this value
     # as it would be output to the CSS document.
     #
+    # @options opts :quote [String]
+    #   The preferred quote style for quoted strings. If `:none`, strings are
+    #   always emitted unquoted.
     # @return [String]
     def to_s(opts = {})
       Sass::Util.abstract(self)

@@ -6,7 +6,7 @@ require 'sass/scss/css_parser'
 # These tests just test the parsing of CSS
 # (both standard and any hacks we intend to support).
 # Tests of SCSS-specific behavior go in scss_test.rb.
-class ScssCssTest < Test::Unit::TestCase
+class ScssCssTest < MiniTest::Test
   include ScssTestHelper
 
   def test_basic_scss
@@ -94,7 +94,7 @@ foo {a /*: b; c */: d}
 SCSS
   end
 
-  def test_crazy_comments 
+  def test_crazy_comments
     # http://www.w3.org/Style/CSS/Test/CSS2.1/current/xhtml1/t040109-c17-comments-00-b.xht
     assert_equal <<CSS, render(<<SCSS)
 /* This is a CSS comment. */
@@ -499,17 +499,38 @@ SCSS
 
   def test_import_directive
     assert_parses '@import "foo.css";'
-    assert_parses "@import 'foo.css';"
     assert_parses '@import url("foo.css");'
     assert_parses "@import url('foo.css');"
     assert_parses '@import url(foo.css);'
+
+    assert_equal <<CSS, render(<<SCSS)
+@import "foo.css";
+CSS
+@import 'foo.css';
+SCSS
   end
 
-  def test_import_directive_with_media
+  def test_import_directive_with_backslash_newline
+    assert_equal <<CSS, render(<<SCSS)
+@import "foobar.css";
+CSS
+@import "foo\\
+bar.css";
+SCSS
+  end
+
+  def test_string_import_directive_with_media
     assert_parses '@import "foo.css" screen;'
     assert_parses '@import "foo.css" screen, print;'
     assert_parses '@import "foo.css" screen, print and (foo: 0);'
     assert_parses '@import "foo.css" screen, only print, screen and (foo: 0);'
+  end
+
+  def test_url_import_directive_with_media
+    assert_parses '@import url("foo.css") screen;'
+    assert_parses '@import url("foo.css") screen, print;'
+    assert_parses '@import url("foo.css") screen, print and (foo: 0);'
+    assert_parses '@import url("foo.css") screen, only print, screen and (foo: 0);'
   end
 
   def test_page_directive
@@ -613,14 +634,14 @@ SCSS
 
   def test_supports
     assert_equal <<CSS, render(<<SCSS)
-@supports (a: b) and (c: d) or (not (d: e)) and ((not (f: g)) or (not ((h: i) and (j: k)))) {
+@supports (((a: b) and (c: d)) or (not (d: e))) and ((not (f: g)) or (not ((h: i) and (j: k)))) {
   .foo {
     a: b; } }
 @supports (a: b) {
   .foo {
     a: b; } }
 CSS
-@supports (a: b) and (c: d) or (not (d: e)) and ((not (f: g)) or (not ((h: i) and (j: k)))) {
+@supports (((a: b) and (c: d)) or (not (d: e))) and ((not (f: g)) or (not ((h: i) and (j: k)))) {
   .foo {
     a: b;
   }
@@ -632,17 +653,100 @@ CSS
   }
 }
 SCSS
+  end
 
+  def test_supports_with_prefix
     assert_equal <<CSS, render(<<SCSS)
-@-prefix-supports (a: b) and (c: d) or (not (d: e)) and ((not (f: g)) or (not ((h: i) and (j: k)))) {
+@-prefix-supports (((a: b) and (c: d)) or (not (d: e))) and ((not (f: g)) or (not ((h: i) and (j: k)))) {
   .foo {
     a: b; } }
 CSS
-@-prefix-supports (a: b) and (c: d) or (not (d: e)) and ((not (f: g)) or (not ((h: i) and (j: k)))) {
+@-prefix-supports (((a: b) and (c: d)) or (not (d: e))) and ((not (f: g)) or (not ((h: i) and (j: k)))) {
   .foo {
     a: b;
   }
 }
+SCSS
+  end
+
+  def test_supports_allows_similar_operators_without_parens
+    assert_equal <<CSS, render(<<SCSS)
+@supports (a: b) and (c: d) and (e: f) {
+  .foo {
+    a: b; } }
+@supports (a: b) or (c: d) or (e: f) {
+  .foo {
+    a: b; } }
+CSS
+@supports (a: b) and (c: d) and (e: f) {
+  .foo {
+    a: b;
+  }
+}
+
+@supports (a: b) or (c: d) or (e: f) {
+  .foo {
+    a: b;
+  }
+}
+SCSS
+  end
+
+  def test_keyframes
+    assert_equal <<CSS, render(<<SCSS)
+@keyframes identifier {
+  0% {
+    top: 0;
+    left: 0; }
+  30% {
+    top: 50px; }
+  68%, 72% {
+    left: 50px; }
+  100% {
+    top: 100px;
+    left: 100%; } }
+CSS
+@keyframes identifier {
+  0% {top: 0; left: 0}
+  30% {top: 50px}
+  68%, 72% {left: 50px}
+  100% {top: 100px; left: 100%}
+}
+SCSS
+  end
+
+  def test_keyframes_with_empty_rules
+    assert_equal <<CSS, render(<<SCSS)
+@keyframes identifier {
+  50% {
+    background-color: black; } }
+CSS
+@keyframes identifier {
+  0% {}
+  50% {background-color: black}
+  100% {}
+}
+SCSS
+  end
+
+  def test_keyframes_with_custom_identifiers
+    assert_equal <<CSS, render(<<SCSS)
+@-skrollr-keyframes identifier {
+  center-top {
+    left: 100%; }
+  top-bottom {
+    left: 0%; } }
+CSS
+@-skrollr-keyframes identifier {
+  center-top {
+    left: 100%;
+  }
+
+  top-bottom {
+    left: 0%;
+  }
+}
+
 SCSS
   end
 
@@ -655,6 +759,8 @@ SCSS
     assert_selector_parses('E:not(s)')
     assert_selector_parses('E:not(s1, s2)')
     assert_selector_parses('E:matches(s1, s2)')
+    assert_selector_parses('E:has(s1, s2)')
+    assert_selector_parses('E:has(> s1, > s2)')
     assert_selector_parses('E.warning')
     assert_selector_parses('E#myid')
     assert_selector_parses('E[foo]')
@@ -705,20 +811,22 @@ SCSS
     assert_selector_parses('E:last-of-type')
     assert_selector_parses('E:nth-last-of-type(n)')
     assert_selector_parses('E:only-of-type')
-    assert_selector_parses('E:nth-match(n of selector)')
-    assert_selector_parses('E:nth-last-match(n of selector)')
-    assert_selector_parses('E:column(selector)')
-    assert_selector_parses('E:nth-column(n)')
-    assert_selector_parses('E:nth-last-column(n)')
+    assert_selector_parses('E:nth-child(n of selector)')
+    assert_selector_parses('E:nth-last-child(n of selector)')
+    assert_selector_parses('E:nth-child(n)')
+    assert_selector_parses('E:nth-last-child(n)')
     assert_selector_parses('E F')
     assert_selector_parses('E > F')
     assert_selector_parses('E + F')
     assert_selector_parses('E ~ F')
     assert_selector_parses('E /foo/ F')
-    assert_selector_parses('E! > F')
+    silence_warnings {assert_selector_parses('E! > F')}
 
     assert_selector_parses('E /ns|foo/ F')
-    assert_selector_parses('E /*|foo/ F')
+
+    # From http://dev.w3.org/csswg/css-scoping-1/
+    assert_selector_parses('E:host(s)')
+    assert_selector_parses('E:host-context(s)')
   end
 
   # Taken from http://dev.w3.org/csswg/selectors4/#overview, but without element
@@ -727,6 +835,8 @@ SCSS
     assert_selector_parses(':not(s)')
     assert_selector_parses(':not(s1, s2)')
     assert_selector_parses(':matches(s1, s2)')
+    assert_selector_parses(':has(s1, s2)')
+    assert_selector_parses(':has(> s1, > s2)')
     assert_selector_parses('.warning')
     assert_selector_parses('#myid')
     assert_selector_parses('[foo]')
@@ -777,11 +887,14 @@ SCSS
     assert_selector_parses(':last-of-type')
     assert_selector_parses(':nth-last-of-type(n)')
     assert_selector_parses(':only-of-type')
-    assert_selector_parses(':nth-match(n of selector)')
-    assert_selector_parses(':nth-last-match(n of selector)')
-    assert_selector_parses(':column(selector)')
-    assert_selector_parses(':nth-column(n)')
-    assert_selector_parses(':nth-last-column(n)')
+    assert_selector_parses(':nth-child(n of selector)')
+    assert_selector_parses(':nth-last-child(n of selector)')
+    assert_selector_parses(':nth-child(n)')
+    assert_selector_parses(':nth-last-child(n)')
+
+    # From http://dev.w3.org/csswg/css-scoping-1/
+    assert_selector_parses(':host(s)')
+    assert_selector_parses(':host-context(s)')
   end
 
   def test_attribute_selectors_with_identifiers
@@ -821,15 +934,18 @@ SCSS
   def test_selectors_containing_selectors
     assert_selector_can_contain_selectors(':not(<sel>)')
     assert_selector_can_contain_selectors(':current(<sel>)')
-    assert_selector_can_contain_selectors(':nth-match(n of <sel>)')
-    assert_selector_can_contain_selectors(':nth-last-match(n of <sel>)')
-    assert_selector_can_contain_selectors(':column(<sel>)')
+    assert_selector_can_contain_selectors(':nth-child(n of <sel>)')
+    assert_selector_can_contain_selectors(':nth-last-child(n of <sel>)')
     assert_selector_can_contain_selectors(':-moz-any(<sel>)')
+    assert_selector_can_contain_selectors(':has(<sel>)')
+    assert_selector_can_contain_selectors(':has(+ <sel>)')
+    assert_selector_can_contain_selectors(':host(<sel>)')
+    assert_selector_can_contain_selectors(':host-context(<sel>)')
   end
 
   def assert_selector_can_contain_selectors(sel)
     try = lambda {|subsel| assert_selector_parses(sel.gsub('<sel>', subsel))}
-    
+
     try['foo|bar']
     try['*|bar']
 
@@ -881,11 +997,11 @@ SCSS
   end
 
   def test_expression_fallback_selectors
-    assert_selector_parses('0%')
-    assert_selector_parses('60%')
-    assert_selector_parses('100%')
-    assert_selector_parses('12px')
-    assert_selector_parses('"foo"')
+    assert_directive_parses('0%')
+    assert_directive_parses('60%')
+    assert_directive_parses('100%')
+    assert_directive_parses('12px')
+    assert_directive_parses('"foo"')
   end
 
   def test_functional_pseudo_selectors
@@ -920,6 +1036,35 @@ SCSS
     assert_equal "E > F {\n  a: b; }\n", render("E>F { a: b;} ")
     assert_equal "E ~ F {\n  a: b; }\n", render("E~F { a: b;} ")
     assert_equal "E + F {\n  a: b; }\n", render("E+F { a: b;} ")
+  end
+
+  def test_escapes_in_selectors
+    assert_selector_parses('.\!foo')
+    assert_selector_parses('.\66 foo')
+    assert_selector_parses('.\21 foo')
+  end
+
+  def test_subject_selector_deprecation
+    assert_warning(<<WARNING) {render(".foo .bar! .baz {a: b}")}
+DEPRECATION WARNING on line 1, column 1:
+The subject selector operator "!" is deprecated and will be removed in a future release.
+This operator has been replaced by ":has()" in the CSS spec.
+For example: .foo .bar:has(.baz)
+WARNING
+
+    assert_warning(<<WARNING) {render(".foo .bar! > .baz {a: b}")}
+DEPRECATION WARNING on line 1, column 1:
+The subject selector operator "!" is deprecated and will be removed in a future release.
+This operator has been replaced by ":has()" in the CSS spec.
+For example: .foo .bar:has(> .baz)
+WARNING
+
+    assert_warning(<<WARNING) {render(".foo .bar! {a: b}")}
+DEPRECATION WARNING on line 1, column 1:
+The subject selector operator "!" is deprecated and will be removed in a future release.
+This operator has been replaced by ":has()" in the CSS spec.
+For example: .foo .bar
+WARNING
   end
 
   ## Errors
@@ -1007,7 +1152,40 @@ SCSS
     assert_equal 1, e.sass_line
   end
 
+  def test_newline_in_property_value
+    assert_equal(<<CSS, render(<<SCSS))
+.foo {
+  bar: "bazbang"; }
+CSS
+.foo {
+  bar: "baz\\
+bang";
+}
+SCSS
+  end
+
   ## Regressions
+
+  def test_very_long_comment_doesnt_take_forever
+    string = 'asdf' * (100000)
+    assert_equal(<<CSS, render(<<SCSS))
+/*
+  #{string}
+*/
+CSS
+/*
+  #{string}
+*/
+SCSS
+  end
+
+  def test_long_unclosed_comment_doesnt_take_forever
+    assert_raise_message(Sass::SyntaxError,
+      'Invalid CSS after "/*": expected "/", was "//*************..."') {render(<<SCSS)}
+/*
+//**************************************************************************
+SCSS
+  end
 
   def test_double_space_string
     assert_equal(<<CSS, render(<<SCSS))
@@ -1079,6 +1257,18 @@ SCSS
   def assert_selector_parses(selector)
     assert_parses <<SCSS
 #{selector} {
+  a: b; }
+SCSS
+
+    assert_parses <<SCSS
+:not(#{selector}) {
+  a: b; }
+SCSS
+  end
+
+  def assert_directive_parses(param)
+    assert_parses <<SCSS
+@unknown #{param} {
   a: b; }
 SCSS
   end

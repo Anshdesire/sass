@@ -67,9 +67,7 @@ module Sass
     def check_encoding!
       return if @checked_encoding
       @checked_encoding = true
-      @template, @original_encoding = Sass::Util.check_sass_encoding(@template) do |msg, line|
-        raise Sass::SyntaxError.new(msg, :line => line)
-      end
+      @template, @original_encoding = Sass::Util.check_sass_encoding(@template)
     end
 
     # Parses the CSS template and applies various transformations
@@ -293,7 +291,7 @@ module Sass
     def bubble_subject(root)
       root.children.each do |child|
         bubble_subject(child) if child.is_a?(Tree::RuleNode) || child.is_a?(Tree::DirectiveNode)
-        next unless child.is_a?(Tree::RuleNode)
+        next unless child.is_a?(Tree::RuleNode) && !child.children.empty?
         next unless child.children.all? do |c|
           next unless c.is_a?(Tree::RuleNode)
           first_simple_sel(c).is_a?(Sass::Selector::Parent) && first_sseq(c).subject?

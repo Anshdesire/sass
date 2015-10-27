@@ -1,13 +1,14 @@
 require 'sass/selector/simple'
 require 'sass/selector/abstract_sequence'
 require 'sass/selector/comma_sequence'
+require 'sass/selector/pseudo'
 require 'sass/selector/sequence'
 require 'sass/selector/simple_sequence'
 
 module Sass
   # A namespace for nodes in the parse tree for selectors.
   #
-  # {CommaSequence} is the toplevel seelctor,
+  # {CommaSequence} is the toplevel selector,
   # representing a comma-separated sequence of {Sequence}s,
   # such as `foo bar, baz bang`.
   # {Sequence} is the next level,
@@ -27,9 +28,19 @@ module Sass
     # The function of this is to be replaced by the parent selector
     # in the nested hierarchy.
     class Parent < Simple
-      # @see Selector#to_a
-      def to_a
-        ["&"]
+      # The identifier following the `&`. `nil` indicates no suffix.
+      #
+      # @return [String, nil]
+      attr_reader :suffix
+
+      # @param name [String, nil] See \{#suffix}
+      def initialize(suffix = nil)
+        @suffix = suffix
+      end
+
+      # @see Selector#to_s
+      def to_s
+        "&" + (@suffix || '')
       end
 
       # Always raises an exception.
@@ -45,17 +56,17 @@ module Sass
     class Class < Simple
       # The class name.
       #
-      # @return [Array<String, Sass::Script::Tree::Node>]
+      # @return [String]
       attr_reader :name
 
-      # @param name [Array<String, Sass::Script::Tree::Node>] The class name
+      # @param name [String] The class name
       def initialize(name)
         @name = name
       end
 
-      # @see Selector#to_a
-      def to_a
-        [".", *@name]
+      # @see Selector#to_s
+      def to_s
+        "." + @name
       end
 
       # @see AbstractSequence#specificity
@@ -68,17 +79,21 @@ module Sass
     class Id < Simple
       # The id name.
       #
-      # @return [Array<String, Sass::Script::Tree::Node>]
+      # @return [String]
       attr_reader :name
 
-      # @param name [Array<String, Sass::Script::Tree::Node>] The id name
+      # @param name [String] The id name
       def initialize(name)
         @name = name
       end
 
-      # @see Selector#to_a
-      def to_a
-        ["#", *@name]
+      def unique?
+        true
+      end
+
+      # @see Selector#to_s
+      def to_s
+        "#" + @name
       end
 
       # Returns `nil` if `sels` contains an {Id} selector
@@ -103,17 +118,17 @@ module Sass
     class Placeholder < Simple
       # The placeholder name.
       #
-      # @return [Array<String, Sass::Script::Tree::Node>]
+      # @return [String]
       attr_reader :name
 
-      # @param name [Array<String, Sass::Script::Tree::Node>] The placeholder name
+      # @param name [String] The placeholder name
       def initialize(name)
         @name = name
       end
 
-      # @see Selector#to_a
-      def to_a
-        ["%", *@name]
+      # @see Selector#to_s
+      def to_s
+        "%" + @name
       end
 
       # @see AbstractSequence#specificity
@@ -124,22 +139,20 @@ module Sass
 
     # A universal selector (`*` in CSS).
     class Universal < Simple
-      # The selector namespace.
-      # `nil` means the default namespace,
-      # `[""]` means no namespace,
-      # `["*"]` means any namespace.
+      # The selector namespace. `nil` means the default namespace, `""` means no
+      # namespace, `"*"` means any namespace.
       #
-      # @return [Array<String, Sass::Script::Tree::Node>, nil]
+      # @return [String, nil]
       attr_reader :namespace
 
-      # @param namespace [Array<String, Sass::Script::Tree::Node>, nil] See \{#namespace}
+      # @param namespace [String, nil] See \{#namespace}
       def initialize(namespace)
         @namespace = namespace
       end
 
-      # @see Selector#to_a
-      def to_a
-        @namespace ? @namespace + ["|*"] : ["*"]
+      # @see Selector#to_s
+      def to_s
+        @namespace ? "#{@namespace}|*" : "*"
       end
 
       # Unification of a universal selector is somewhat complicated,
@@ -173,7 +186,7 @@ module Sass
           when Universal; :universal
           when Element; sels.first.name
           else
-            return [self] + sels unless namespace.nil? || namespace == ['*']
+            return [self] + sels unless namespace.nil? || namespace == '*'
             return sels unless sels.empty?
             return [self]
           end
@@ -193,27 +206,25 @@ module Sass
     class Element < Simple
       # The element name.
       #
-      # @return [Array<String, Sass::Script::Tree::Node>]
+      # @return [String]
       attr_reader :name
 
-      # The selector namespace.
-      # `nil` means the default namespace,
-      # `[""]` means no namespace,
-      # `["*"]` means any namespace.
+      # The selector namespace. `nil` means the default namespace, `""` means no
+      # namespace, `"*"` means any namespace.
       #
-      # @return [Array<String, Sass::Script::Tree::Node>, nil]
+      # @return [String, nil]
       attr_reader :namespace
 
-      # @param name [Array<String, Sass::Script::Tree::Node>] The element name
-      # @param namespace [Array<String, Sass::Script::Tree::Node>, nil] See \{#namespace}
+      # @param name [String] The element name
+      # @param namespace [String, nil] See \{#namespace}
       def initialize(name, namespace)
         @name = name
         @namespace = namespace
       end
 
-      # @see Selector#to_a
-      def to_a
-        @namespace ? @namespace + ["|"] + @name : @name
+      # @see Selector#to_s
+      def to_s
+        @namespace ? "#{@namespace}|#{@name}" : @name
       end
 
       # Unification of an element selector is somewhat complicated,
@@ -256,32 +267,6 @@ module Sass
       end
     end
 
-    # Selector interpolation (`#{}` in Sass).
-    class Interpolation < Simple
-      # The script to run.
-      #
-      # @return [Sass::Script::Tree::Node]
-      attr_reader :script
-
-      # @param script [Sass::Script::Tree::Node] The script to run
-      def initialize(script)
-        @script = script
-      end
-
-      # @see Selector#to_a
-      def to_a
-        [@script]
-      end
-
-      # Always raises an exception.
-      #
-      # @raise [Sass::SyntaxError] Interpolation selectors should be resolved before unification
-      # @see Selector#unify
-      def unify(sels)
-        raise Sass::SyntaxError.new("[BUG] Cannot unify interpolation selectors.")
-      end
-    end
-
     # An attribute selector (e.g. `[href^="http://"]`).
     class Attribute < Simple
       # The attribute name.
@@ -289,12 +274,10 @@ module Sass
       # @return [Array<String, Sass::Script::Tree::Node>]
       attr_reader :name
 
-      # The attribute namespace.
-      # `nil` means the default namespace,
-      # `[""]` means no namespace,
-      # `["*"]` means any namespace.
+      # The attribute namespace. `nil` means the default namespace, `""` means
+      # no namespace, `"*"` means any namespace.
       #
-      # @return [Array<String, Sass::Script::Tree::Node>, nil]
+      # @return [String, nil]
       attr_reader :namespace
 
       # The matching operator, e.g. `"="` or `"^="`.
@@ -304,19 +287,19 @@ module Sass
 
       # The right-hand side of the operator.
       #
-      # @return [Array<String, Sass::Script::Tree::Node>]
+      # @return [String]
       attr_reader :value
 
       # Flags for the attribute selector (e.g. `i`).
       #
-      # @return [Array<String, Sass::Script::Tree::Node>]
+      # @return [String]
       attr_reader :flags
 
-      # @param name [Array<String, Sass::Script::Tree::Node>] The attribute name
-      # @param namespace [Array<String, Sass::Script::Tree::Node>, nil] See \{#namespace}
+      # @param name [String] The attribute name
+      # @param namespace [String, nil] See \{#namespace}
       # @param operator [String] The matching operator, e.g. `"="` or `"^="`
-      # @param value [Array<String, Sass::Script::Tree::Node>] See \{#value}
-      # @param flags [Array<String, Sass::Script::Tree::Node>] See \{#flags}
+      # @param value [String] See \{#value}
+      # @param flags [String] See \{#flags}
       # @comment
       #   rubocop:disable ParameterLists
       def initialize(name, namespace, operator, value, flags)
@@ -328,120 +311,14 @@ module Sass
         @flags = flags
       end
 
-      # @see Selector#to_a
-      def to_a
-        res = ["["]
-        res.concat(@namespace) << "|" if @namespace
-        res.concat @name
-        (res << @operator).concat @value if @value
-        (res << " ").concat @flags if @flags
+      # @see Selector#to_s
+      def to_s
+        res = "["
+        res << @namespace << "|" if @namespace
+        res << @name
+        res << @operator << @value if @value
+        res << " " << @flags if @flags
         res << "]"
-      end
-
-      # @see AbstractSequence#specificity
-      def specificity
-        SPECIFICITY_BASE
-      end
-    end
-
-    # A pseudoclass (e.g. `:visited`) or pseudoelement (e.g. `::first-line`) selector.
-    # It can have arguments (e.g. `:nth-child(2n+1)`).
-    class Pseudo < Simple
-      # Some psuedo-class-syntax selectors are actually considered
-      # pseudo-elements and must be treated differently. This is a list of such
-      # selectors
-      #
-      # @return [Array<String>]
-      ACTUALLY_ELEMENTS = %w[after before first-line first-letter]
-
-      # Like \{#type}, but returns the type of selector this looks like, rather
-      # than the type it is semantically. This only differs from type for
-      # selectors in \{ACTUALLY\_ELEMENTS}.
-      #
-      # @return [Symbol]
-      attr_reader :syntactic_type
-
-      # The name of the selector.
-      #
-      # @return [Array<String, Sass::Script::Tree::Node>]
-      attr_reader :name
-
-      # The argument to the selector,
-      # or `nil` if no argument was given.
-      #
-      # This may include SassScript nodes that will be run during resolution.
-      # Note that this should not include SassScript nodes
-      # after resolution has taken place.
-      #
-      # @return [Array<String, Sass::Script::Tree::Node>, nil]
-      attr_reader :arg
-
-      # @param type [Symbol] See \{#type}
-      # @param name [Array<String, Sass::Script::Tree::Node>] The name of the selector
-      # @param arg [nil, Array<String, Sass::Script::Tree::Node>] The argument to the selector,
-      #   or nil if no argument was given
-      def initialize(type, name, arg)
-        @syntactic_type = type
-        @name = name
-        @arg = arg
-      end
-
-      # The type of the selector. `:class` if this is a pseudoclass selector,
-      # `:element` if it's a pseudoelement.
-      #
-      # @return [Symbol]
-      def type
-        ACTUALLY_ELEMENTS.include?(name.first) ? :element : syntactic_type
-      end
-
-      # @see Selector#to_a
-      def to_a
-        res = [syntactic_type == :class ? ":" : "::"] + @name
-        (res << "(").concat(Sass::Util.strip_string_array(@arg)) << ")" if @arg
-        res
-      end
-
-      # Returns `nil` if this is a pseudoelement selector
-      # and `sels` contains a pseudoelement selector different than this one.
-      #
-      # @see Selector#unify
-      def unify(sels)
-        return if type == :element && sels.any? do |sel|
-          sel.is_a?(Pseudo) && sel.type == :element &&
-            (sel.name != name || sel.arg != arg)
-        end
-        super
-      end
-
-      # @see AbstractSequence#specificity
-      def specificity
-        type == :class ? SPECIFICITY_BASE : 1
-      end
-    end
-
-    # A pseudoclass selector whose argument is itself a selector
-    # (e.g. `:not(.foo)` or `:-moz-all(.foo, .bar)`).
-    class SelectorPseudoClass < Simple
-      # The name of the pseudoclass.
-      #
-      # @return [String]
-      attr_reader :name
-
-      # The selector argument.
-      #
-      # @return [Selector::Sequence]
-      attr_reader :selector
-
-      # @param name [String] The name of the pseudoclass
-      # @param selector [Selector::CommaSequence] The selector argument
-      def initialize(name, selector)
-        @name = name
-        @selector = selector
-      end
-
-      # @see Selector#to_a
-      def to_a
-        [":", @name, "("] + @selector.to_a + [")"]
       end
 
       # @see AbstractSequence#specificity

@@ -17,7 +17,7 @@ module Sass::Script::Functions
   end
 end
 
-class SassPluginTest < Test::Unit::TestCase
+class SassPluginTest < MiniTest::Test
   @@templates = %w{
     complex script parent_ref import scss_import alt
     subdir/subdir subdir/nested_subdir/nested_subdir
@@ -29,8 +29,8 @@ class SassPluginTest < Test::Unit::TestCase
   @@cache_store = Sass::CacheStores::Memory.new
 
   def setup
-    FileUtils.mkdir_p tempfile_loc
-    FileUtils.mkdir_p tempfile_loc(nil,"more_")
+    Sass::Util.retry_on_windows {FileUtils.mkdir_p tempfile_loc}
+    Sass::Util.retry_on_windows {FileUtils.mkdir_p tempfile_loc(nil,"more_")}
     set_plugin_opts
     check_for_updates!
     reset_mtimes
@@ -39,8 +39,8 @@ class SassPluginTest < Test::Unit::TestCase
   def teardown
     clean_up_sassc
     Sass::Plugin.reset!
-    FileUtils.rm_r tempfile_loc
-    FileUtils.rm_r tempfile_loc(nil,"more_")
+    Sass::Util.retry_on_windows {FileUtils.rm_r tempfile_loc}
+    Sass::Util.retry_on_windows {FileUtils.rm_r tempfile_loc(nil,"more_")}
   end
 
   @@templates.each do |name|
@@ -113,7 +113,7 @@ class SassPluginTest < Test::Unit::TestCase
     File.open(tempfile_loc('bork1')) do |file|
       assert_equal(<<CSS.strip, file.read.split("\n")[0...6].join("\n"))
 /*
-Syntax error: Undefined variable: "$bork".
+Error: Undefined variable: "$bork".
         on line 2 of #{template_loc('bork1')}
 
 1: bork
@@ -129,7 +129,7 @@ CSS
     File.open(tempfile_loc('bork5')) do |file|
       assert_equal(<<CSS.strip, file.read.split("\n")[0...7].join("\n"))
 /*
-Syntax error: Undefined variable: "$bork".
+Error: Undefined variable: "$bork".
         on line 3 of #{template_loc('bork5')}
 
 1: bork
@@ -146,7 +146,7 @@ CSS
     File.open(tempfile_loc('single_import_loop')) do |file|
       assert_equal(<<CSS.strip, file.read.split("\n")[0...2].join("\n"))
 /*
-Syntax error: An @import loop has been found: #{template_loc('single_import_loop')} imports itself
+Error: An @import loop has been found: #{template_loc('single_import_loop')} imports itself
 CSS
     end
   end
@@ -157,9 +157,23 @@ CSS
     File.open(tempfile_loc('double_import_loop1')) do |file|
       assert_equal(<<CSS.strip, file.read.split("\n")[0...4].join("\n"))
 /*
-Syntax error: An @import loop has been found:
-                  #{template_loc('double_import_loop1')} imports #{template_loc('_double_import_loop2')}
-                  #{template_loc('_double_import_loop2')} imports #{template_loc('double_import_loop1')}
+Error: An @import loop has been found:
+           #{template_loc('double_import_loop1')} imports #{template_loc('_double_import_loop2')}
+           #{template_loc('_double_import_loop2')} imports #{template_loc('double_import_loop1')}
+CSS
+    end
+  end
+
+  def test_import_name_cleanup
+    File.delete(tempfile_loc('subdir/import_up1'))
+    check_for_updates!
+    File.open(tempfile_loc('subdir/import_up1')) do |file|
+      assert_equal(<<CSS.strip, file.read.split("\n")[0...5].join("\n"))
+/*
+Error: File to import not found or unreadable: ../subdir/import_up3.scss.
+       Load path: #{template_loc}
+        on line 1 of #{template_loc 'subdir/import_up2'}
+        from line 1 of #{template_loc 'subdir/import_up1'}
 CSS
     end
   end
@@ -169,7 +183,7 @@ CSS
     Sass::Plugin.options[:full_exception] = false
 
     File.delete(tempfile_loc('bork1'))
-    assert_raise(Sass::SyntaxError) {check_for_updates!}
+    assert_raises(Sass::SyntaxError) {check_for_updates!}
   ensure
     Sass::Plugin.options[:full_exception] = old_full_exception
   end
@@ -195,7 +209,7 @@ CSS
   end
 
   def test_doesnt_render_partials
-    assert !File.exists?(tempfile_loc('_partial'))
+    assert !File.exist?(tempfile_loc('_partial'))
   end
 
   def test_template_location_array
@@ -487,13 +501,15 @@ WARNING
     Sass::Plugin::StalenessChecker.dependencies_cache = {}
     atime = Time.now
     mtime = Time.now - 5
-    Dir["{#{template_loc},#{tempfile_loc}}/**/*.{css,sass,scss}"].each {|f| File.utime(atime, mtime, f)}
+    Dir["{#{template_loc},#{tempfile_loc}}/**/*.{css,sass,scss}"].each do |f|
+      Sass::Util.retry_on_windows {File.utime(atime, mtime, f)}
+    end
   end
 
   def template_loc(name = nil, prefix = nil)
     if name
       scss = absolutize "#{prefix}templates/#{name}.scss"
-      File.exists?(scss) ? scss : absolutize("#{prefix}templates/#{name}.sass")
+      File.exist?(scss) ? scss : absolutize("#{prefix}templates/#{name}.sass")
     else
       absolutize "#{prefix}templates"
     end
@@ -523,7 +539,8 @@ WARNING
       :always_update => true,
       :never_update => false,
       :full_exception => true,
-      :cache_store => @@cache_store
+      :cache_store => @@cache_store,
+      :sourcemap => :none
     )
     Sass::Plugin.options.merge!(overrides)
   end

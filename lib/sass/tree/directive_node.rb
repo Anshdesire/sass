@@ -1,5 +1,5 @@
 module Sass::Tree
-  # A static node representing an unproccessed Sass `@`-directive.
+  # A static node representing an unprocessed Sass `@`-directive.
   # Directives known to Sass, like `@for` and `@debug`,
   # are handled by their own nodes;
   # only CSS directives like `@media` and `@font-face` become {DirectiveNode}s.
@@ -43,7 +43,13 @@ module Sass::Tree
 
     # @return [String] The name of the directive, including `@`.
     def name
-      value.first.gsub(/ .*$/, '')
+      @name ||= value.first.gsub(/ .*$/, '')
+    end
+
+    # Strips out any vendor prefixes and downcases the directive name.
+    # @return [String] The normalized name of the directive.
+    def normalized_name
+      @normalized_name ||= name.gsub(/^(@)(?:-[a-zA-Z0-9]+-)?/, '\1').downcase
     end
 
     def bubbles?

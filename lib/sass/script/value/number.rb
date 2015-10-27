@@ -43,12 +43,20 @@ module Sass::Script::Value
     def self.precision=(digits)
       @precision = digits.round
       @precision_factor = 10.0**@precision
+      @epsilon = 1 / (@precision_factor * 10)
     end
 
     # the precision factor used in numeric output
     # it is derived from the `precision` method.
     def self.precision_factor
       @precision_factor ||= 10.0**precision
+    end
+
+    # Used in checking equality of floating point numbers. Any
+    # numbers within an `epsilon` of each other are considered functionally equal.
+    # The value for epsilon is one tenth of the current numeric precision.
+    def self.epsilon
+      @epsilon ||= 1 / (precision_factor * 10)
     end
 
     # Used so we don't allocate two new arrays for each new number.
@@ -175,13 +183,9 @@ module Sass::Script::Value
     # @param other [Number] The right-hand side of the operator
     # @return [Number] This number modulo the other
     # @raise [NoMethodError] if `other` is an invalid type
-    # @raise [Sass::UnitConversionError] if `other` has any units
+    # @raise [Sass::UnitConversionError] if `other` has incompatible units
     def mod(other)
       if other.is_a?(Number)
-        unless other.unitless?
-          raise Sass::UnitConversionError.new(
-            "Cannot modulo by a number with units: #{other.inspect}.")
-        end
         operate(other, :%)
       else
         raise NoMethodError.new(nil, :mod)
@@ -204,7 +208,7 @@ module Sass::Script::Value
       rescue Sass::UnitConversionError
         return Bool::FALSE
       end
-      Bool.new(this.value == other.value)
+      Bool.new(basically_equal?(this.value, other.value))
     end
 
     def hash
@@ -215,7 +219,7 @@ module Sass::Script::Value
     # Hash-equality must be transitive, so it just compares the exact value,
     # numerator units, and denominator units.
     def eql?(other)
-      value == other.value && numerator_units == other.numerator_units &&
+      basically_equal?(value, other.value) && numerator_units == other.numerator_units &&
         denominator_units == other.denominator_units
     end
 
@@ -275,6 +279,8 @@ module Sass::Script::Value
     #
     # @return [String] The representation
     def inspect(opts = {})
+      return original if original
+
       value = self.class.round(self.value)
       str = value.to_s
 
@@ -291,12 +297,12 @@ module Sass::Script::Value
     # @raise [Sass::SyntaxError] if the number isn't an integer
     def to_i
       super unless int?
-      value
+      value.to_i
     end
 
     # @return [Boolean] Whether or not this number is an integer.
     def int?
-      value % 1 == 0.0
+      basically_equal?(value % 1, 0.0)
     end
 
     # @return [Boolean] Whether or not this number has no units.
@@ -378,17 +384,29 @@ module Sass::Script::Value
     private
 
     # @private
+    # @see Sass::Script::Number.basically_equal?
+    def basically_equal?(num1, num2)
+      self.class.basically_equal?(num1, num2)
+    end
+
+    # Checks whether two numbers are within an epsilon of each other.
+    # @return [Boolean]
+    def self.basically_equal?(num1, num2)
+      (num1 - num2).abs < epsilon
+    end
+
+    # @private
     def self.round(num)
       if num.is_a?(Float) && (num.infinite? || num.nan?)
         num
-      elsif num % 1 == 0.0
+      elsif basically_equal?(num % 1, 0.0)
         num.to_i
       else
         ((num * precision_factor).round / precision_factor).to_f
       end
     end
 
-    OPERATIONS = [:+, :-, :<=, :<, :>, :>=]
+    OPERATIONS = [:+, :-, :<=, :<, :>, :>=, :%]
 
     def operate(other, operation)
       this = self
@@ -449,25 +467,71 @@ module Sass::Script::Value
       end
     end
 
-    # A hash of unit names to their index in the conversion table
-    CONVERTABLE_UNITS = %w(in cm pc mm pt px).inject({}) {|m, v| m[v] = m.size; m}
+    # This is the source data for all the unit logic. It's pre-processed to make
+    # it efficient to figure out whether a set of units is mutually compatible
+    # and what the conversion ratio is between two units.
+    #
+    # These come from http://www.w3.org/TR/2012/WD-css3-values-20120308/.
+    relative_sizes = [
+      {
+        'in' => Rational(1),
+        'cm' => Rational(1, 2.54),
+        'pc' => Rational(1, 6),
+        'mm' => Rational(1, 25.4),
+        'pt' => Rational(1, 72),
+        'px' => Rational(1, 96)
+      },
+      {
+        'deg'  => Rational(1, 360),
+        'grad' => Rational(1, 400),
+        'rad'  => Rational(1, 2 * Math::PI),
+        'turn' => Rational(1)
+      },
+      {
+        's'  => Rational(1),
+        'ms' => Rational(1, 1000)
+      },
+      {
+        'Hz'  => Rational(1),
+        'kHz' => Rational(1000)
+      },
+      {
+        'dpi'  => Rational(1),
+        'dpcm' => Rational(1, 2.54),
+        'dppx' => Rational(1, 96)
+      }
+    ]
 
-    #                    in   cm    pc          mm          pt          px
-    CONVERSION_TABLE = [[1,   2.54, 6,          25.4,       72        , 96],           # in
-                        [nil, 1,    2.36220473, 10,         28.3464567, 37.795275591], # cm
-                        [nil, nil,  1,          4.23333333, 12        , 16],           # pc
-                        [nil, nil,  nil,        1,          2.83464567, 3.7795275591], # mm
-                        [nil, nil,  nil,        nil,        1         , 1.3333333333], # pt
-                        [nil, nil,  nil,        nil,        nil       , 1]]            # px
+    # A hash from each known unit to the set of units that it's mutually
+    # convertible with.
+    MUTUALLY_CONVERTIBLE = {}
+    relative_sizes.map do |values|
+      set = values.keys.to_set
+      values.keys.each {|name| MUTUALLY_CONVERTIBLE[name] = set}
+    end
+
+    # A two-dimensional hash from two units to the conversion ratio between
+    # them. Multiply `X` by `CONVERSION_TABLE[X][Y]` to convert it to `Y`.
+    CONVERSION_TABLE = {}
+    relative_sizes.each do |values|
+      values.each do |(name1, value1)|
+        CONVERSION_TABLE[name1] ||= {}
+        values.each do |(name2, value2)|
+          value = value1 / value2
+          CONVERSION_TABLE[name1][name2] = value.denominator == 1 ? value.to_i : value.to_f
+        end
+      end
+    end
 
     def conversion_factor(from_unit, to_unit)
-      res = CONVERSION_TABLE[CONVERTABLE_UNITS[from_unit]][CONVERTABLE_UNITS[to_unit]]
-      return 1.0 / conversion_factor(to_unit, from_unit) if res.nil?
-      res
+      CONVERSION_TABLE[from_unit][to_unit]
     end
 
     def convertable?(units)
-      Array(units).all? {|u| CONVERTABLE_UNITS.include?(u)}
+      units = Array(units).to_set
+      return true if units.empty?
+      return false unless (mutually_convertible = MUTUALLY_CONVERTIBLE[units.first])
+      units.subset?(mutually_convertible)
     end
 
     def sans_common_units(units1, units2)

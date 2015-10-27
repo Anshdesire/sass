@@ -59,7 +59,7 @@ module Sass
       #
       # In the worst case, this runs in `O(m*max(n, log m))` time,
       # where `n` is the size of `set`
-      # and `m` is the number of assocations in the map.
+      # and `m` is the number of associations in the map.
       # However, unless many keys in the map overlap with `set`,
       # `m` will typically be much smaller.
       #
@@ -78,8 +78,7 @@ module Sass
             next unless subset.subset?(set)
             [index, subenum]
           end
-        end
-        res = Sass::Util.flatten(res, 1)
+        end.flatten(1)
         res.compact!
         res.uniq!
         res.sort!

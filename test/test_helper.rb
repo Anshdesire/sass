@@ -1,6 +1,6 @@
 lib_dir = File.dirname(__FILE__) + '/../lib'
 
-require 'test/unit'
+require 'minitest/autorun'
 require 'fileutils'
 $:.unshift lib_dir unless $:.include?(lib_dir)
 require 'sass'
@@ -22,24 +22,32 @@ module Sass::Script::Functions
   end
 end
 
-class Test::Unit::TestCase
+class MiniTest::Test
   def munge_filename(opts = {})
-    return if opts.has_key?(:filename)
-    opts[:filename] = filename_for_test(opts[:syntax] || :sass)
+    opts[:filename] ||= filename_for_test(opts[:syntax] || :sass)
+    opts[:sourcemap_filename] ||= sourcemap_filename_for_test
+    opts
   end
 
-  def filename_for_test(syntax = :sass)
-    test_name = caller.
+  def test_name
+    caller.
       map {|c| Sass::Util.caller_info(c)[2]}.
       compact.
       map {|c| c.sub(/^(block|rescue) in /, '')}.
       find {|c| c =~ /^test_/}
+  end
+
+  def filename_for_test(syntax = :sass)
     "#{test_name}_inline.#{syntax}"
+  end
+
+  def sourcemap_filename_for_test(syntax = :sass)
+    "#{test_name}_inline.css.map"
   end
 
   def clean_up_sassc
     path = File.dirname(__FILE__) + "/../.sass-cache"
-    FileUtils.rm_r(path) if File.exist?(path)
+    Sass::Util.retry_on_windows {FileUtils.rm_r(path) if File.exist?(path)}
   end
 
   def assert_warning(message)

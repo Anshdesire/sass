@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 module Sass
   module SCSS
     # A module containing regular expressions used
@@ -63,9 +64,9 @@ module Sass
       STRING1  = /\"((?:[^\n\r\f\\"]|\\#{NL}|#{ESCAPE})*)\"/
       STRING2  = /\'((?:[^\n\r\f\\']|\\#{NL}|#{ESCAPE})*)\'/
 
-      IDENT    = /-?#{NMSTART}#{NMCHAR}*/
+      IDENT    = /-*#{NMSTART}#{NMCHAR}*/
       NAME     = /#{NMCHAR}+/
-      NUM      = /[0-9]+|[0-9]*\.[0-9]+/
+      NUM      = //
       STRING   = /#{STRING1}|#{STRING2}/
       URLCHAR  = /[#%&*-~]|#{NONASCII}|#{ESCAPE}/
       URL      = /(#{URLCHAR}*)/
@@ -80,7 +81,7 @@ module Sass
 
       S = /[ \t\r\n\f]+/
 
-      COMMENT = %r{/\*[^*]*\*+(?:[^/][^*]*\*+)*/}
+      COMMENT = %r{/\*([^*]|\*+[^/*])*\**\*/}
       SINGLE_LINE_COMMENT = %r{//.*(\n[ \t]*//.*)*}
 
       CDO            = quote("<!--")
@@ -95,7 +96,14 @@ module Sass
 
       IMPORTANT = /!#{W}important/i
 
-      NUMBER = /#{NUM}(?:#{IDENT}|%)?/
+      # A unit is like an IDENT, but disallows a hyphen followed by a digit.
+      # This allows "1px-2px" to be interpreted as subtraction rather than "1"
+      # with the unit "px-2px". It also allows "%".
+      UNIT = /-?#{NMSTART}(?:[a-zA-Z0-9_]|#{NONASCII}|#{ESCAPE}|-(?!\d))*|%/
+
+      UNITLESS_NUMBER = /(?:[0-9]+|[0-9]*\.[0-9]+)(?:[eE][+-]?\d+)?/
+      NUMBER = /#{UNITLESS_NUMBER}(?:#{UNIT})?/
+      PERCENTAGE = /#{UNITLESS_NUMBER}%/
 
       URI = /url\(#{W}(?:#{STRING}|#{URL})#{W}\)/i
       FUNCTION = /#{IDENT}\(/
@@ -118,10 +126,11 @@ module Sass
       INTERP_START = /#\{/
       ANY = /:(-[-\w]+-)?any\(/i
       OPTIONAL = /!#{W}optional/i
+      IDENT_START = /-|#{NMSTART}/
 
       IDENT_HYPHEN_INTERP = /-(#\{)/
-      STRING1_NOINTERP = /\"((?:[^\n\r\f\\"#]|#(?!\{)|\\#{NL}|#{ESCAPE})*)\"/
-      STRING2_NOINTERP = /\'((?:[^\n\r\f\\'#]|#(?!\{)|\\#{NL}|#{ESCAPE})*)\'/
+      STRING1_NOINTERP = /\"((?:[^\n\r\f\\"#]|#(?!\{)|#{ESCAPE})*)\"/
+      STRING2_NOINTERP = /\'((?:[^\n\r\f\\'#]|#(?!\{)|#{ESCAPE})*)\'/
       STRING_NOINTERP = /#{STRING1_NOINTERP}|#{STRING2_NOINTERP}/
 
       STATIC_COMPONENT = /#{IDENT}|#{STRING_NOINTERP}|#{HEXCOLOR}|[+-]?#{NUMBER}|\!important/i

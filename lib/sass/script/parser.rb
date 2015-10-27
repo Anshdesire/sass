@@ -36,13 +36,19 @@ module Sass
       # which signals the end of an interpolated segment,
       # it returns rather than throwing an error.
       #
+      # @param warn_for_color [Boolean] Whether raw color values passed to
+      #   interoplation should cause a warning.
       # @return [Script::Tree::Node] The root node of the parse tree
       # @raise [Sass::SyntaxError] if the expression isn't valid SassScript
-      def parse_interpolated
+      def parse_interpolated(warn_for_color = false)
+        # Start two characters back to compensate for #{
+        start_pos = Sass::Source::Position.new(line, offset - 2)
         expr = assert_expr :expr
         assert_tok :end_interpolation
+        expr = Sass::Script::Tree::Interpolation.new(
+          nil, expr, nil, !:wb, !:wa, !:originally_text, warn_for_color)
         expr.options = @options
-        expr
+        node(expr, start_pos)
       rescue Sass::SyntaxError => e
         e.modify_backtrace :line => @lexer.line, :filename => @options[:filename]
         raise e
@@ -197,7 +203,7 @@ module Sass
           PRECEDENCE.each_with_index do |e, i|
             return i if Array(e).include?(op)
           end
-          raise "[BUG] Unknown operator #{op}"
+          raise "[BUG] Unknown operator #{op.inspect}"
         end
 
         # Returns whether or not the given operation is associative.
@@ -226,8 +232,8 @@ module Sass
                   return other_interp
                 end
 
-                start_pos = source_position
-                e = node(Tree::Operation.new(e, assert_expr(#{sub.inspect}), tok.type), start_pos)
+                e = node(Tree::Operation.new(e, assert_expr(#{sub.inspect}), tok.type),
+                         e.source_range.start_pos)
               end
               e
             end
@@ -302,6 +308,7 @@ RUBY
           end
           return list unless (e = interpolation)
           list.elements << e
+          list.source_range.end_pos = list.elements.last.source_range.end_pos
         end
         list
       end
@@ -340,7 +347,8 @@ RUBY
         e = first
         while (interp = try_tok(:begin_interpolation))
           wb = @lexer.whitespace?(interp)
-          mid = parse_interpolated
+          mid = assert_expr :expr
+          assert_tok :end_interpolation
           wa = @lexer.whitespace?
           e = node(
             Script::Tree::Interpolation.new(e, mid, space, wb, wa),
@@ -382,9 +390,16 @@ RUBY
 
         name = @lexer.next
         if (color = Sass::Script::Value::Color::COLOR_NAMES[name.value.downcase])
-          return literal_node(Sass::Script::Value::Color.new(color), name.source_range)
+          literal_node(Sass::Script::Value::Color.new(color, name.value), name.source_range)
+        elsif name.value == "true"
+          literal_node(Sass::Script::Value::Bool.new(true), name.source_range)
+        elsif name.value == "false"
+          literal_node(Sass::Script::Value::Bool.new(false), name.source_range)
+        elsif name.value == "null"
+          literal_node(Sass::Script::Value::Null.new, name.source_range)
+        else
+          literal_node(Sass::Script::Value::String.new(name.value, :identifier), name.source_range)
         end
-        literal_node(Script::Value::String.new(name.value, :identifier), name.source_range)
       end
 
       def funcall
@@ -480,35 +495,25 @@ RUBY
       end
 
       def special_fun
-        start_pos = source_position
-        tok = try_tok(:special_fun)
-        return paren unless tok
-        first = literal_node(Script::Value::String.new(tok.value.first),
-          start_pos, start_pos.after(tok.value.first))
-        Sass::Util.enum_slice(tok.value[1..-1], 2).inject(first) do |l, (i, r)|
-          end_pos = i.source_range.end_pos
-          end_pos = end_pos.after(r) if r
-          node(
-            Script::Tree::Interpolation.new(
-              l, i,
-              r && literal_node(Script::Value::String.new(r),
-                i.source_range.end_pos, end_pos),
-              false, false),
-            start_pos, end_pos)
-        end
+        first = try_tok(:special_fun)
+        return paren unless first
+        str = literal_node(first.value, first.source_range)
+        return str unless try_tok(:string_interpolation)
+        mid = assert_expr :expr
+        assert_tok :end_interpolation
+        last = assert_expr(:special_fun)
+        node(Tree::Interpolation.new(str, mid, last, false, false),
+            first.source_range.start_pos)
       end
 
       def paren
         return variable unless try_tok(:lparen)
-        was_in_parens = @in_parens
-        @in_parens = true
         start_pos = source_position
         e = map
+        e.force_division! if e
         end_pos = source_position
         assert_tok(:rparen)
-        return e || node(Sass::Script::Tree::ListLiteral.new([], nil), start_pos, end_pos)
-      ensure
-        @in_parens = was_in_parens
+        e || node(Sass::Script::Tree::ListLiteral.new([], nil), start_pos, end_pos)
       end
 
       def variable
@@ -522,8 +527,9 @@ RUBY
         first = try_tok(:string)
         return number unless first
         str = literal_node(first.value, first.source_range)
-        return str unless try_tok(:begin_interpolation)
-        mid = parse_interpolated
+        return str unless try_tok(:string_interpolation)
+        mid = assert_expr :expr
+        assert_tok :end_interpolation
         last = assert_expr(:string)
         node(Tree::StringInterpolation.new(str, mid, last), first.source_range.start_pos)
       end
@@ -532,7 +538,7 @@ RUBY
         tok = try_tok(:number)
         return selector unless tok
         num = tok.value
-        num.original = num.to_s unless @in_parens
+        num.original = num.to_s
         literal_node(num, tok.source_range.start_pos)
       end
 
@@ -543,7 +549,7 @@ RUBY
       end
 
       def literal
-        t = try_toks(:color, :bool, :null)
+        t = try_tok(:color)
         return literal_node(t.value, t.source_range) if t
       end
 
@@ -556,6 +562,7 @@ RUBY
         :mixin_arglist => "mixin argument",
         :fn_arglist => "function argument",
         :splat => "...",
+        :special_fun => '")"',
       }
 
       def assert_expr(name, expected = nil)

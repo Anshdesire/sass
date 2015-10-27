@@ -3,7 +3,7 @@ require File.dirname(__FILE__) + '/../test_helper'
 require 'pathname'
 require 'tmpdir'
 
-class UtilTest < Test::Unit::TestCase
+class UtilTest < MiniTest::Test
   include Sass::Util
 
   def test_scope
@@ -42,6 +42,15 @@ class UtilTest < Test::Unit::TestCase
       }, map_hash({:foo => 1, :bar => 2, :baz => 3}) {|k, v| [k.to_s, v.to_s]})
   end
 
+  def test_map_hash_with_normalized_map
+    map = NormalizedMap.new("foo-bar" => 1, "baz_bang" => 2)
+    result = map_hash(map) {|k, v| [k, v.to_s]}
+    assert_equal("1", result["foo-bar"])
+    assert_equal("1", result["foo_bar"])
+    assert_equal("2", result["baz-bang"])
+    assert_equal("2", result["baz_bang"])
+  end
+
   def test_powerset
     return unless Set[Set[]] == Set[Set[]] # There's a bug in Ruby 1.8.6 that breaks nested set equality
     assert_equal([[].to_set].to_set,
@@ -68,6 +77,15 @@ class UtilTest < Test::Unit::TestCase
     str = "foo"
     assert_equal(["foo foo foo", :bang, "foo foo", 12],
       merge_adjacent_strings([str, " ", str, " ", str, :bang, str, " ", str, 12]))
+  end
+
+  def test_replace_subseq
+    assert_equal([1, 2, :a, :b, 5],
+      replace_subseq([1, 2, 3, 4, 5], [3, 4], [:a, :b]))
+    assert_equal([1, 2, 3, 4, 5],
+      replace_subseq([1, 2, 3, 4, 5], [3, 4, 6], [:a, :b]))
+    assert_equal([1, 2, 3, 4, 5],
+      replace_subseq([1, 2, 3, 4, 5], [4, 5, 6], [:a, :b]))
   end
 
   def test_intersperse
@@ -188,48 +206,11 @@ class UtilTest < Test::Unit::TestCase
     assert_equal(98, ord("bar"))
   end
 
-  def test_flatten
-    assert_equal([1, 2, 3], flatten([1, 2, 3], 0))
-    assert_equal([1, 2, 3], flatten([1, 2, 3], 1))
-    assert_equal([1, 2, 3], flatten([1, 2, 3], 2))
-
-    assert_equal([[1, 2], 3], flatten([[1, 2], 3], 0))
-    assert_equal([1, 2, 3], flatten([[1, 2], 3], 1))
-    assert_equal([1, 2, 3], flatten([[1, 2], 3], 2))
-
-    assert_equal([[[1], 2], [3], 4], flatten([[[1], 2], [3], 4], 0))
-    assert_equal([[1], 2, 3, 4], flatten([[[1], 2], [3], 4], 1))
-    assert_equal([1, 2, 3, 4], flatten([[[1], 2], [3], 4], 2))
-  end
-
-  def test_set_hash
-    assert(set_hash(Set[1, 2, 3]) == set_hash(Set[3, 2, 1]))
-    assert(set_hash(Set[1, 2, 3]) == set_hash(Set[1, 2, 3]))
-
-    s1 = Set[]
-    s1 << 1
-    s1 << 2
-    s1 << 3
-    s2 = Set[]
-    s2 << 3
-    s2 << 2
-    s2 << 1
-    assert(set_hash(s1) == set_hash(s2))
-  end
-
-  def test_set_eql
-    assert(set_eql?(Set[1, 2, 3], Set[3, 2, 1]))
-    assert(set_eql?(Set[1, 2, 3], Set[1, 2, 3]))
-
-    s1 = Set[]
-    s1 << 1
-    s1 << 2
-    s1 << 3
-    s2 = Set[]
-    s2 << 3
-    s2 << 2
-    s2 << 1
-    assert(set_eql?(s1, s2))
+  def test_flatten_vertically
+    assert_equal([1, 2, 3], flatten_vertically([1, 2, 3]))
+    assert_equal([1, 3, 5, 2, 4, 6], flatten_vertically([[1, 2], [3, 4], [5, 6]]))
+    assert_equal([1, 2, 4, 3, 5, 6], flatten_vertically([1, [2, 3], [4, 5, 6]]))
+    assert_equal([1, 4, 6, 2, 5, 3], flatten_vertically([[1, 2, 3], [4, 5], 6]))
   end
 
   def test_extract_and_inject_values
@@ -255,10 +236,12 @@ class UtilTest < Test::Unit::TestCase
   def test_caller_info
     assert_equal(["/tmp/foo.rb", 12, "fizzle"], caller_info("/tmp/foo.rb:12: in `fizzle'"))
     assert_equal(["/tmp/foo.rb", 12, nil], caller_info("/tmp/foo.rb:12"))
+    assert_equal(["C:/tmp/foo.rb", 12, nil], caller_info("C:/tmp/foo.rb:12"))
     assert_equal(["(sass)", 12, "blah"], caller_info("(sass):12: in `blah'"))
     assert_equal(["", 12, "boop"], caller_info(":12: in `boop'"))
     assert_equal(["/tmp/foo.rb", -12, "fizzle"], caller_info("/tmp/foo.rb:-12: in `fizzle'"))
     assert_equal(["/tmp/foo.rb", 12, "fizzle"], caller_info("/tmp/foo.rb:12: in `fizzle {}'"))
+    assert_equal(["C:/tmp/foo.rb", 12, "fizzle"], caller_info("C:/tmp/foo.rb:12: in `fizzle {}'"))
 
     info = nested_caller_info_fn
     assert_equal(__FILE__, info[0])
@@ -401,6 +384,29 @@ WARNING
       end
       threads.each {|t| t.join}
     end
+  ensure
+    Sass::Util.retry_on_windows {File.delete filename if File.exist?(filename)}
+  end
+
+  def test_atomic_write_permissions
+    atomic_filename = File.join(Dir.tmpdir, "test_atomic_perms.atomic")
+    normal_filename = File.join(Dir.tmpdir, "test_atomic_perms.normal")
+    atomic_create_and_write_file(atomic_filename) {|f| f.write("whatever\n") }
+    open(normal_filename, "wb") {|f| f.write("whatever\n") }
+    assert_equal File.stat(normal_filename).mode.to_s(8), File.stat(atomic_filename).mode.to_s(8)
+  ensure
+    File.unlink(atomic_filename) rescue nil
+    File.unlink(normal_filename) rescue nil
+  end
+
+  def test_atomic_writes_respect_umask
+    atomic_filename = File.join(Dir.tmpdir, "test_atomic_perms.atomic")
+    atomic_create_and_write_file(atomic_filename) do |f|
+      f.write("whatever\n")
+    end
+    assert_equal 0, File.stat(atomic_filename).mode & File.umask
+  ensure
+    File.unlink(atomic_filename)
   end
 
   class FakeError < RuntimeError; end

@@ -1,9 +1,9 @@
 #!/usr/bin/env ruby
-require 'test/unit'
+require 'minitest/autorun'
 require File.dirname(__FILE__) + '/../test_helper'
 require 'sass/css'
 
-class CSS2SassTest < Test::Unit::TestCase
+class CSS2SassTest < MiniTest::Test
   def test_basic
     css = <<CSS
 h1 {
@@ -24,10 +24,13 @@ SASS
     assert_equal(<<SASS, css2sass(<<CSS))
 li
   display: none
+
   a
     text-decoration: none
+
     span
       color: yellow
+
     &:hover
       text-decoration: underline
 SASS
@@ -62,7 +65,7 @@ div .debug
 SASS
 div .warning {
   color: #d21a19; }
-span .debug { 
+span .debug {
   cursor: crosshair;}
 div .debug {
   cursor: default; }
@@ -117,6 +120,7 @@ span.turkey
 
 #overhere
   bored: sorta
+
   /*                  it's for a good
    * cause
   better_than: thread_pools
@@ -168,12 +172,16 @@ CSS
     assert_equal(<<SASS, css2sass(<<CSS))
 hello
   parent: true
+
   there
     parent: false
+
   who
     hoo: false
+
   why
     y: true
+
   when
     wen: nao
 
@@ -229,6 +237,7 @@ CSS
     assert_equal(<<SASS, css2sass(<<CSS))
 \\:focus
   a: b
+
   \\:foo
     bar: baz
 SASS
@@ -238,19 +247,22 @@ CSS
   end
 
   def test_subject
-    assert_equal(<<SASS, css2sass(<<CSS))
+    silence_warnings {assert_equal(<<SASS, css2sass(<<CSS))}
 .foo
   .bar!
     .baz
       a: b
+
     .bip
       c: d
+
   .bar .bonk
     e: f
 
 .flip!
   &.bar
     a: b
+
   &.baz
     c: d
 SASS
@@ -263,7 +275,80 @@ SASS
 CSS
   end
 
+  def test_keyframes
+    assert_equal(<<SASS, css2sass(<<CSS))
+@keyframes dash
+  from
+    stroke-dasharray: 1,200
+    stroke-dashoffset: 0
+
+  50%
+    stroke-dasharray: 89,200
+    stroke-dashoffset: -35
+
+  to
+    stroke-dasharray: 89,200
+    stroke-dashoffset: -124
+SASS
+@keyframes dash {
+  from {
+    stroke-dasharray: 1,200;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 89,200;
+    stroke-dashoffset: -35;
+  }
+  to {
+    stroke-dasharray: 89,200;
+    stroke-dashoffset: -124;
+  }
+}
+CSS
+  end
+
   # Regressions
+
+  def test_nesting_with_matching_property
+    assert_equal(<<SASS, css2sass(<<CSS))
+ul
+  width: 10px
+
+  div
+    width: 20px
+
+article
+  width: 10px
+
+  p
+    width: 20px
+SASS
+ul {width: 10px}
+ul div {width: 20px}
+article {width: 10px}
+article p {width: 20px}
+CSS
+  end
+
+  def test_empty_rule
+    assert_equal(<<SASS, css2sass(<<CSS))
+a
+SASS
+a {}
+CSS
+  end
+
+  def test_empty_rule_with_selector_combinator
+    assert_equal(<<SASS, css2sass(<<CSS))
+a
+  color: red
+
+  > b
+SASS
+a {color: red}
+a > b {}
+CSS
+  end
 
   def test_nesting_within_media
     assert_equal(<<SASS, css2sass(<<CSS))
@@ -308,6 +393,7 @@ CSS
 .foo >
   .bar
     a: b
+
   .baz
     c: d
 SASS
@@ -319,6 +405,7 @@ CSS
 .foo
   &::bar
     a: b
+
   &::baz
     c: d
 SASS

@@ -120,12 +120,12 @@ module Sass
     def options
       compiler.options
     end
-
   end
 end
 
 if defined?(ActionController)
-  require 'sass/plugin/rails'
+  # On Rails 3+ the rails plugin is loaded at the right time in railtie.rb
+  require 'sass/plugin/rails' unless Sass::Util.ap_geq_3?
 elsif defined?(Merb::Plugins)
   require 'sass/plugin/merb'
 else
